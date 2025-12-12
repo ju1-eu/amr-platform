@@ -1,25 +1,37 @@
-# === PlatformIO ===
+# === Build-Artefakte ===
 .pio/
 .vscode/
+*.o
+*.elf
+*.bin
+*.map
+
+# === Python ===
+__pycache__/
+*.pyc
+.pytest_cache/
 
 # === ROS 2 Build ===
 ros2_ws/build/
 ros2_ws/install/
 ros2_ws/log/
 
-# === Hailo ===
-*.hef
-hailo_models/
+# === Docker ===
 *.log
 
-# === Python ===
-__pycache__/
-*.pyc
+# === Hailo (große Dateien!) ===
+*.hef
+hailo_models/
 
 # === macOS ===
 .DS_Store
-*.code-workspace
+*.swp
 
-# === Secrets ===
+# === Secrets (niemals committen!) ===
 *.key
 *.pem
+secrets/
+
+# === IDE ===
+*.code-workspace
+.idea/

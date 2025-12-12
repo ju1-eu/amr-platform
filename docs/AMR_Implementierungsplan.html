@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>AMR_Implementierungsplan.mathjax_tmp</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    /* CSS for syntax highlighting */
+    html { -webkit-text-size-adjust: 100%; }
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+  <link rel="stylesheet" href="main-design.css" />
+</head>
+<body>
+<div class="main-container">
+<h1 id="amr-implementierungsplan">AMR Implementierungsplan</h1>
+<h2 id="vom-schaltplan-zur-autonomen-navigation">Vom Schaltplan zur
+autonomen Navigation</h2>
+<blockquote>
+<p><strong>Version:</strong> 1.2 | <strong>Stand:</strong> 2025-12-12 |
+<strong>Firmware:</strong> v0.3.0-serial</p>
+</blockquote>
+<hr />
+<h2
+id="das-grundprinzip-vertikale-scheiben-statt-horizontaler-schichten">Das
+Grundprinzip: Vertikale Scheiben statt horizontaler Schichten</h2>
+<p>Ein häufiger Fehler bei Robotik-Projekten: Man baut zuerst die
+gesamte Hardware auf, dann die gesamte Firmware, dann die gesamten
+Treiber – und am Ende, beim ersten Integrationstest, funktioniert
+nichts. Die Fehlersuche wird zum Albtraum, weil alles gleichzeitig neu
+ist.</p>
+<p><strong>Unser Ansatz:</strong> Wir schneiden das System in
+<em>vertikale Scheiben</em>. Jede Phase liefert ein lauffähiges
+Teilsystem, das wir testen können, bevor die nächste Komplexitätsstufe
+hinzukommt.</p>
+<pre><code>Klassisch (riskant):          Unser Weg (inkrementell):
+
+┌──────────────────┐          Phase 1: ──────────────────► ✅
+│    Navigation    │                   Motor + Failsafe
+├──────────────────┤
+│   Wahrnehmung    │          Phase 2: ──────────────────► ◄── AKTUELL
+├──────────────────┤                   + Encoder + Odom
+│    Firmware      │
+├──────────────────┤          Phase 3: ──────────────────►
+│    Hardware      │                   + LiDAR + SLAM
+└──────────────────┘
+       ↓                      Phase 4: ──────────────────►
+  Big Bang Test                        + Navigation
+  (Chaos)
+                              Phase 5: ──────────────────►
+                                       + Kamera + AI</code></pre>
+<hr />
+<h2 id="phase-0-fundament-woche-12">Phase 0: Fundament (Woche 1–2)
+✅</h2>
+<p><strong>Ziel:</strong> Eine saubere Entwicklungsumgebung, die uns
+später keine Steine in den Weg legt.</p>
+<p><strong>Status:</strong> ✅ Abgeschlossen</p>
+<ul>
+<li>Raspberry Pi OS Lite (64-bit, Bookworm)</li>
+<li>Docker und Docker Compose</li>
+<li>Hailo-8L Treiber (HailoRT 4.23.0)</li>
+<li>Git-Workflow Mac ↔︎ GitHub ↔︎ Pi</li>
+</ul>
+<hr />
+<h2 id="phase-1-der-erste-lebenshauch-woche-34">Phase 1: Der erste
+Lebenshauch (Woche 3–4) ✅</h2>
+<p><strong>Ziel:</strong> Ein Rad dreht sich auf Befehl. Das klingt
+trivial – ist aber der Beweis, dass die gesamte Kette von ROS 2 bis zum
+Motor funktioniert.</p>
+<p><strong>Status:</strong> ✅ Abgeschlossen (2025-12-12)</p>
+<h3 id="erreichte-meilensteine">1.1 Erreichte Meilensteine</h3>
+<table class="table table-compact">
+<thead>
+<tr>
+<th>Komponente</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ESP32 Serial-Bridge Firmware</td>
+<td>✅ v0.3.0-serial</td>
+</tr>
+<tr>
+<td>Differential Drive Kinematik</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Deadzone-Kompensation</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Failsafe (500ms Timeout)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>ROS 2 Serial Bridge Node</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Docker Integration</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Teleop Tastatursteuerung</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<h3 id="architektur-entscheidung">1.2 Architektur-Entscheidung</h3>
+<p><strong>Problem:</strong> micro-ROS Build scheitert an Python 3.13
+(Raspberry Pi OS Bookworm)</p>
+<p><strong>Lösung:</strong> Serial-Bridge als Workaround</p>
+<pre><code>┌─────────────────────────────────────────────────────────────────────────┐
+│                        Serial-Bridge Architektur                        │
+├─────────────────────────────────────────────────────────────────────────┤
+│   ROS 2 (Docker)              USB-Serial              ESP32-S3          │
+│  ┌──────────────┐            ┌────────┐            ┌──────────────┐    │
+│  │ /cmd_vel     │───────────▶│ Bridge │───────────▶│ Differential │    │
+│  │ Twist msg    │            │ Node   │  V:0.2,    │ Drive        │    │
+│  └──────────────┘            │ Python │  W:0.5\n   │ Kinematik    │    │
+│                              └────────┘            └──────────────┘    │
+└─────────────────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="cytron-mdd3a-dual-pwm-steuerung">1.3 Cytron MDD3A – Dual-PWM
+Steuerung</h3>
+<blockquote>
+<p>⚠️ <strong>Kritisch:</strong> Der MDD3A verwendet
+<strong>kein</strong> DIR-Pin, sondern zwei PWM-Signale pro Motor!</p>
+</blockquote>
+<table class="table table-compact">
+<thead>
+<tr>
+<th>M1A (PWM)</th>
+<th>M1B (PWM)</th>
+<th>Ergebnis</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>200</td>
+<td>0</td>
+<td>Vorwärts</td>
+</tr>
+<tr>
+<td>0</td>
+<td>200</td>
+<td>Rückwärts</td>
+</tr>
+<tr>
+<td>0</td>
+<td>0</td>
+<td>Coast (Auslaufen)</td>
+</tr>
+<tr>
+<td>200</td>
+<td>200</td>
+<td>Active Brake</td>
+</tr>
+</tbody>
+</table>
+<h3 id="deadzone-kompensation">1.4 Deadzone-Kompensation</h3>
+<p>Kleine Geschwindigkeiten (z.B. bei Drehung mit W=0.5) fielen unter
+die Motor-Deadzone. Lösung:</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="dt">void</span> hal_motor_set<span class="op">(</span><span class="dt">uint8_t</span> ch_a<span class="op">,</span> <span class="dt">uint8_t</span> ch_b<span class="op">,</span> <span class="dt">float</span> speed<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Unter 5% ignorieren</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(</span>abs<span class="op">(</span>speed<span class="op">)</span> <span class="op">&lt;</span> <span class="fl">0.05</span><span class="bu">f</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>        ledcWrite<span class="op">(</span>ch_a<span class="op">,</span> <span class="dv">0</span><span class="op">);</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>        ledcWrite<span class="op">(</span>ch_b<span class="op">,</span> <span class="dv">0</span><span class="op">);</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span><span class="op">;</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Deadzone-Kompensation: Skaliere auf [PWM_DEADZONE, PWM_MAX]</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span> pwm <span class="op">=</span> PWM_DEADZONE <span class="op">+</span> <span class="op">(</span><span class="dt">int</span><span class="op">)(</span>abs<span class="op">(</span>speed<span class="op">)</span> <span class="op">*</span> <span class="op">(</span>MOTOR_PWM_MAX <span class="op">-</span> PWM_DEADZONE<span class="op">));</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    <span class="co">// ...</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="validierung">1.5 Validierung</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Teleop starten</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> exec <span class="at">-it</span> amr_perception bash</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="bu">source</span> /opt/ros/jazzy/setup.bash</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="ex">ros2</span> run teleop_twist_keyboard teleop_twist_keyboard</span></code></pre></div>
+<p><strong>Tasten:</strong> <code>i</code>=Vorwärts,
+<code>,</code>=Rückwärts, <code>j</code>/<code>l</code>=Drehen,
+<code>k</code>=Stopp</p>
+<p><strong>Meilenstein Phase 1:</strong> ✅ Teleop funktioniert,
+Failsafe aktiv.</p>
+<hr />
+<h2 id="phase-2-bewegung-mit-feedback-woche-56-aktuell">Phase 2:
+Bewegung mit Feedback (Woche 5–6) ◄── AKTUELL</h2>
+<p><strong>Ziel:</strong> Der Roboter weiß, wo er ist (Odometrie). Wir
+können ihn per Tastatur steuern und seine Position in RViz2 sehen.</p>
+<h3 id="encoder-integration">2.1 Encoder-Integration</h3>
+<p>Die Encoder liefern Impulse pro Radumdrehung. Der ESP32 zählt diese
+in einem Interrupt.</p>
+<p><strong>Pin-Belegung:</strong></p>
+<table class="table table-compact">
+<thead>
+<tr>
+<th>Encoder</th>
+<th>Pin</th>
+<th>Interrupt</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Links</td>
+<td>D6</td>
+<td>RISING</td>
+</tr>
+<tr>
+<td>Rechts</td>
+<td>D7</td>
+<td>RISING</td>
+</tr>
+</tbody>
+</table>
+<p><strong>ISR:</strong></p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="at">volatile</span> <span class="dt">long</span> encoder_left_ticks <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="at">volatile</span> <span class="dt">long</span> encoder_right_ticks <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="dt">void</span> IRAM_ATTR encoder_left_isr<span class="op">()</span> <span class="op">{</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    encoder_left_ticks<span class="op">++;</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="dt">void</span> IRAM_ATTR encoder_right_isr<span class="op">()</span> <span class="op">{</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>    encoder_right_ticks<span class="op">++;</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="encoder-kalibrierung">2.2 Encoder-Kalibrierung</h3>
+<ol type="1">
+<li>Rad markieren (Strich auf Reifen und Chassis)</li>
+<li>Kalibrierungs-Sketch hochladen</li>
+<li>Rad <strong>exakt 10 Umdrehungen</strong> von Hand drehen</li>
+<li>Ticks ablesen und durch 10 teilen</li>
+<li><strong>Für beide Motoren einzeln durchführen!</strong></li>
+</ol>
+<p>Werte in <code>config.h</code> eintragen:</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#define TICKS_PER_REV_LEFT     </span><span class="fl">390.5</span><span class="bu">f</span><span class="pp">  </span><span class="co">// Kalibriert</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="pp">#define TICKS_PER_REV_RIGHT    </span><span class="fl">392.0</span><span class="bu">f</span><span class="pp">  </span><span class="co">// Kalibriert</span></span></code></pre></div>
+<h3 id="odometrie-berechnung">2.3 Odometrie-Berechnung</h3>
+<p><strong>Differentialkinematik:</strong></p>
+<pre><code>d_left  = (delta_ticks_left / TICKS_PER_REV) × WHEEL_CIRCUMFERENCE
+d_right = (delta_ticks_right / TICKS_PER_REV) × WHEEL_CIRCUMFERENCE
+
+d_center = (d_left + d_right) / 2
+d_theta  = (d_right - d_left) / WHEEL_BASE
+
+x += d_center × cos(theta + d_theta/2)
+y += d_center × sin(theta + d_theta/2)
+theta += d_theta</code></pre>
+<h3 id="serial-protokoll-erweitern">2.4 Serial-Protokoll erweitern</h3>
+<pre><code>ESP32 → Host: ODOM:&lt;left_ticks&gt;,&lt;right_ticks&gt;,&lt;x&gt;,&lt;y&gt;,&lt;theta&gt;\n</code></pre>
+<h3 id="ros-2-publisher">2.5 ROS 2 Publisher</h3>
+<ul>
+<li><code>/odom</code> (Typ: <code>nav_msgs/Odometry</code>) – Position
+und Orientierung</li>
+<li>TF-Broadcast: <code>odom</code> → <code>base_link</code></li>
+</ul>
+<h3 id="validierung-1">2.6 Validierung</h3>
+<ul>
+<li>Roboter 1 m fahren → Odometrie muss ~1 m anzeigen (±5%)</li>
+<li>RViz2: Odometrie-Pfad visualisieren</li>
+</ul>
+<p><strong>Meilenstein Phase 2:</strong> Roboter fährt per Tastatur,
+Odometrie in RViz2 stimmt auf ±5 %.</p>
+<hr />
+<h2 id="phase-3-sehen-lernen-lidar-slam-woche-79">Phase 3: Sehen lernen
+– LiDAR &amp; SLAM (Woche 7–9)</h2>
+<p><strong>Ziel:</strong> Der Roboter baut eine Karte seiner
+Umgebung.</p>
+<h3 id="lidar-treiber">3.1 LiDAR-Treiber</h3>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ros2</span> launch rplidar_ros rplidar_a1_launch.py</span></code></pre></div>
+<h3 id="slam-toolbox">3.2 SLAM-Toolbox</h3>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ros2</span> launch slam_toolbox online_async_launch.py params_file:=slam_params.yaml</span></code></pre></div>
+<p><strong>Meilenstein Phase 3:</strong> Eine speicherbare Karte des
+Testraums existiert.</p>
+<hr />
+<h2 id="phase-4-autonome-navigation-woche-1012">Phase 4: Autonome
+Navigation (Woche 10–12)</h2>
+<p><strong>Ziel:</strong> Wir setzen ein Ziel auf der Karte, der Roboter
+fährt autonom hin.</p>
+<h3 id="nav2-stack">4.1 Nav2 Stack</h3>
+<table class="table table-compact">
+<thead>
+<tr>
+<th>Komponente</th>
+<th>Funktion</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>AMCL</strong></td>
+<td>Lokalisierung auf bekannter Karte</td>
+</tr>
+<tr>
+<td><strong>Planner Server</strong></td>
+<td>Globaler Pfad (A* / Dijkstra)</td>
+</tr>
+<tr>
+<td><strong>Controller Server</strong></td>
+<td>Lokale Hindernisvermeidung</td>
+</tr>
+<tr>
+<td><strong>Costmap</strong></td>
+<td>Hinderniskarte aus Sensordaten</td>
+</tr>
+<tr>
+<td><strong>BT Navigator</strong></td>
+<td>Verhaltenssteuerung</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Meilenstein Phase 4:</strong> Roboter navigiert autonom,
+weicht Hindernissen aus.</p>
+<hr />
+<h2 id="phase-5-wahrnehmungserweiterung-kamera-ai-woche-1315">Phase 5:
+Wahrnehmungserweiterung – Kamera &amp; AI (Woche 13–15)</h2>
+<p><strong>Ziel:</strong> Der Roboter erkennt Objekte und kann darauf
+reagieren.</p>
+<ul>
+<li>IMX296 Global Shutter Kamera</li>
+<li>YOLOv8 auf Hailo-8L (31 FPS validiert)</li>
+<li>Personen-Erkennung → Stopp-Verhalten</li>
+</ul>
+<p><strong>Meilenstein Phase 5:</strong> Roboter stoppt, wenn eine
+Person erkannt wird.</p>
+<hr />
+<h2 id="phase-6-integration-härtung-woche-1618">Phase 6: Integration
+&amp; Härtung (Woche 16–18)</h2>
+<p><strong>Ziel:</strong> Robustes System für Demo und
+Dokumentation.</p>
+<ul>
+<li>Sensor Fusion (EKF)</li>
+<li>Systemstart automatisieren</li>
+<li>Demo: Karte, Waypoints, Video</li>
+</ul>
+<p><strong>Meilenstein Phase 6:</strong> Robustes System, startet
+automatisch, Demo-fähig.</p>
+<hr />
+<h2 id="risikomatrix">Risikomatrix</h2>
+<table class="table table-compact">
+<colgroup>
+<col style="width: 17%" />
+<col style="width: 40%" />
+<col style="width: 17%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th>Risiko</th>
+<th>Wahrscheinlichkeit</th>
+<th>Impact</th>
+<th>Mitigation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>libcamera-Inkompatibilität</td>
+<td>Niedrig</td>
+<td>Hoch</td>
+<td>Raspberry Pi OS ✅</td>
+</tr>
+<tr>
+<td>Odometrie-Drift</td>
+<td>Hoch</td>
+<td>Mittel</td>
+<td>Kalibrierung, später EKF</td>
+</tr>
+<tr>
+<td>Hailo-Treiber instabil</td>
+<td>Mittel</td>
+<td>Mittel</td>
+<td>Navigation funktioniert auch ohne AI</td>
+</tr>
+<tr>
+<td>Nav2-Tuning aufwändig</td>
+<td>Hoch</td>
+<td>Mittel</td>
+<td>Viel Zeit einplanen</td>
+</tr>
+<tr>
+<td><strong>micro-ROS inkompatibel</strong></td>
+<td><del>Hoch</del></td>
+<td><del>Hoch</del></td>
+<td>✅ <strong>Serial-Bridge</strong></td>
+</tr>
+<tr>
+<td><strong>MDD3A-Ansteuerung</strong></td>
+<td><del>Hoch</del></td>
+<td><del>Hoch</del></td>
+<td>✅ <strong>Dual-PWM</strong></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="zeitplan-übersicht">Zeitplan (Übersicht)</h2>
+<pre><code>Woche:  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18
+        ════════════════════════════════════════════════════
+Phase 0 ████                                                 Fundament     ✅
+Phase 1       ████                                           Motor-Test    ✅
+Phase 2             ████                                     Odometrie     ◄── AKTUELL
+Phase 3                   ██████                             SLAM
+Phase 4                            ██████                    Navigation
+Phase 5                                     ██████           Kamera/AI
+Phase 6                                              ██████  Integration
+        ════════════════════════════════════════════════════</code></pre>
+<hr />
+<h2 id="checkliste-pro-phase">Checkliste pro Phase</h2>
+<p>Jede Phase ist erst abgeschlossen, wenn:</p>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Die definierten Tests
+bestanden sind</label></li>
+<li><label><input type="checkbox" checked="" />Der Code committet und
+dokumentiert ist</label></li>
+<li><label><input type="checkbox" checked="" />Die Konfigurationsdateien
+versioniert sind</label></li>
+<li><label><input type="checkbox" checked="" />Ein kurzes Protokoll die
+Ergebnisse festhält</label></li>
+<li><label><input type="checkbox" checked="" />Der nächste Schritt klar
+ist</label></li>
+</ul>
+<p><strong>Phase 1:</strong> ✅ Alle Punkte erfüllt</p>
+<hr />
+<p><em>Dieser Plan folgt dem Prinzip: Jede Woche ein lauffähiges System.
+Lieber weniger Features, die funktionieren, als viele Features, die
+zusammen crashen.</em></p>
+<p><em>Aktualisiert: 2025-12-12 | Firmware: v0.3.0-serial | Phase 1
+abgeschlossen</em></p>
+</div>
+</body>
+</html>

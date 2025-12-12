@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>todo-liste.mathjax_tmp</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+  </style>
+  <link rel="stylesheet" href="main-design.css" />
+</head>
+<body>
+<div class="main-container">
+<h1 id="todo-liste-amr-projekt">ToDo-Liste AMR-Projekt</h1>
+<blockquote>
+<p><strong>Stand:</strong> 2025-12-12 | <strong>Aktuelle Phase:</strong>
+2 (Odometrie)</p>
+</blockquote>
+<hr />
+<h2 id="phasen-übersicht">📊 Phasen-Übersicht</h2>
+<table class="table table-compact">
+<thead>
+<tr>
+<th>Phase</th>
+<th>Beschreibung</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Phase 0</td>
+<td>Fundament (OS, Docker, Hailo)</td>
+<td>✅ Abgeschlossen</td>
+</tr>
+<tr>
+<td>Phase 1</td>
+<td>Motor-Test + Teleop</td>
+<td>✅ <strong>Abgeschlossen</strong></td>
+</tr>
+<tr>
+<td>Phase 2</td>
+<td>Encoder + Odometrie</td>
+<td>◄── <strong>AKTUELL</strong></td>
+</tr>
+<tr>
+<td>Phase 3</td>
+<td>LiDAR + SLAM</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>Phase 4</td>
+<td>Navigation</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>Phase 5</td>
+<td>Kamera + AI</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>Phase 6</td>
+<td>Integration</td>
+<td>⬜</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="phase-1-abgeschlossen-2025-12-12">✅ Phase 1: Abgeschlossen
+(2025-12-12)</h2>
+<h3 id="erreichte-ziele">Erreichte Ziele</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />ESP32 Serial-Bridge
+Firmware v0.3.0</label></li>
+<li><label><input type="checkbox" checked="" />Differential Drive
+Kinematik</label></li>
+<li><label><input type="checkbox"
+checked="" />Deadzone-Kompensation</label></li>
+<li><label><input type="checkbox" checked="" />Failsafe (500ms
+Timeout)</label></li>
+<li><label><input type="checkbox" checked="" />ROS 2 Serial Bridge
+Node</label></li>
+<li><label><input type="checkbox" checked="" />Docker
+Integration</label></li>
+<li><label><input type="checkbox" checked="" />Teleop
+Tastatursteuerung</label></li>
+<li><label><input type="checkbox" checked="" />Git-Workflow Mac ↔︎ GitHub
+↔︎ Pi</label></li>
+</ul>
+<h3 id="workaround-dokumentiert">Workaround dokumentiert</h3>
+<ul>
+<li>micro-ROS Build scheitert an Python 3.13</li>
+<li><strong>Lösung:</strong> Serial-Bridge statt micro-ROS Agent</li>
+</ul>
+<hr />
+<h2 id="phase-2-odometrie-aktuell">🎯 Phase 2: Odometrie (AKTUELL)</h2>
+<h3 id="encoder-kalibrierung">2.1 Encoder-Kalibrierung</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />Kalibrierungs-Sketch auf ESP32
+flashen</label></li>
+<li><label><input type="checkbox" />Linkes Rad: 10 Umdrehungen drehen,
+Ticks zählen</label></li>
+<li><label><input type="checkbox" />Rechtes Rad: 10 Umdrehungen drehen,
+Ticks zählen</label></li>
+<li><label><input type="checkbox" /><code>TICKS_PER_REV_LEFT</code> in
+config.h eintragen</label></li>
+<li><label><input type="checkbox" /><code>TICKS_PER_REV_RIGHT</code> in
+config.h eintragen</label></li>
+</ul>
+<h3 id="esp32-firmware-erweitern">2.2 ESP32 Firmware erweitern</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />Encoder-ISR implementieren (D6,
+D7)</label></li>
+<li><label><input type="checkbox" />Odometrie-Berechnung (x, y,
+theta)</label></li>
+<li><label><input type="checkbox" />Serial-Protokoll erweitern:
+<code>ODOM:left,right,x,y,theta\n</code></label></li>
+<li><label><input type="checkbox" />Tick-Counter zurücksetzen bei
+Reset</label></li>
+</ul>
+<h3 id="ros-2-bridge-erweitern">2.3 ROS 2 Bridge erweitern</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />Odometrie parsen</label></li>
+<li><label><input type="checkbox" /><code>/odom</code> Topic publizieren
+(nav_msgs/Odometry)</label></li>
+<li><label><input type="checkbox" />TF-Broadcast: <code>odom</code> →
+<code>base_link</code></label></li>
+</ul>
+<h3 id="validierung">2.4 Validierung</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />1 m vorwärts fahren → Odometrie
+zeigt ~1 m (±5%)</label></li>
+<li><label><input type="checkbox" />360° drehen → Odometrie zeigt ~360°
+(±10%)</label></li>
+<li><label><input type="checkbox" />RViz2: Odometrie-Pfad
+visualisieren</label></li>
+</ul>
+<hr />
+<h2 id="nächste-phasen-vorschau">📋 Nächste Phasen (Vorschau)</h2>
+<h3 id="phase-3-slam">Phase 3: SLAM</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />RPLIDAR A1 in ROS 2
+integrieren</label></li>
+<li><label><input type="checkbox" />slam_toolbox
+konfigurieren</label></li>
+<li><label><input type="checkbox" />Erste Karte erstellen</label></li>
+<li><label><input type="checkbox" />Karte speichern</label></li>
+</ul>
+<h3 id="phase-4-navigation">Phase 4: Navigation</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />Nav2 Stack
+konfigurieren</label></li>
+<li><label><input type="checkbox" />AMCL Lokalisierung</label></li>
+<li><label><input type="checkbox" />Autonome Punkt-zu-Punkt
+Navigation</label></li>
+</ul>
+<h3 id="phase-5-kamera-ai">Phase 5: Kamera + AI</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />IMX296 Global Shutter
+integrieren</label></li>
+<li><label><input type="checkbox" />YOLOv8 auf Hailo-8L</label></li>
+<li><label><input type="checkbox" />Personen-Erkennung →
+Stopp-Verhalten</label></li>
+</ul>
+<h3 id="phase-6-integration">Phase 6: Integration</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />Sensor Fusion (EKF)</label></li>
+<li><label><input type="checkbox" />Systemstart
+automatisieren</label></li>
+<li><label><input type="checkbox" />Demo vorbereiten</label></li>
+</ul>
+<hr />
+<h2 id="dokumentation">📚 Dokumentation</h2>
+<table class="table table-compact">
+<thead>
+<tr>
+<th>Datei</th>
+<th>Inhalt</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>01-Pi-OS-flashen.md</code></td>
+<td>OS-Installation, SSH, Docker</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>02-hailo-setup.md</code></td>
+<td>HailoRT 4.23.0, Benchmark</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>03-ros2-docker.md</code></td>
+<td>Container-Setup, URDF</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>04-esp32-firmware.md</code></td>
+<td>PlatformIO Firmware</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>08-entwicklerdoku-status.md</code></td>
+<td>Projektstatus</td>
+<td>✅ Aktualisiert</td>
+</tr>
+<tr>
+<td><code>AMR_Implementierungsplan.md</code></td>
+<td>Phasenplan</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>Industriestandards-AMR.md</code></td>
+<td>REP-103, REP-105</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="zeitplan">📅 Zeitplan</h2>
+<pre><code>Woche:  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18
+        ════════════════════════════════════════════════════
+Phase 0 ████                                                 Fundament     ✅
+Phase 1       ████                                           Motor-Test    ✅
+Phase 2             ████                                     Odometrie     ◄── AKTUELL
+Phase 3                   ██████                             SLAM
+Phase 4                            ██████                    Navigation
+Phase 5                                     ██████           Kamera/AI
+Phase 6                                              ██████  Integration
+        ════════════════════════════════════════════════════</code></pre>
+<hr />
+<h2 id="checkliste-pro-phase">✅ Checkliste pro Phase</h2>
+<p>Jede Phase ist erst abgeschlossen, wenn:</p>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Die definierten Tests
+bestanden sind</label></li>
+<li><label><input type="checkbox" checked="" />Der Code committet und
+dokumentiert ist</label></li>
+<li><label><input type="checkbox" checked="" />Die Konfigurationsdateien
+versioniert sind</label></li>
+<li><label><input type="checkbox" checked="" />Ein kurzes Protokoll die
+Ergebnisse festhält</label></li>
+<li><label><input type="checkbox" checked="" />Der nächste Schritt klar
+ist</label></li>
+</ul>
+<p><strong>Phase 1:</strong> Alle Punkte erfüllt ✅</p>
+<hr />
+<h2 id="aktuelle-software-versionen">🔧 Aktuelle Software-Versionen</h2>
+<table class="table table-compact">
+<thead>
+<tr>
+<th>Komponente</th>
+<th>Version</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ESP32 Firmware</td>
+<td>v0.3.0-serial</td>
+</tr>
+<tr>
+<td>Serial Bridge</td>
+<td>v0.3.0</td>
+</tr>
+<tr>
+<td>Docker Stack</td>
+<td>perception + serial_bridge</td>
+</tr>
+<tr>
+<td>Git Repo</td>
+<td>unger-robotics/amr-platform</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p><em>Aktualisiert: 2025-12-12 | Phase 1 abgeschlossen</em></p>
+</div>
+</body>
+</html>

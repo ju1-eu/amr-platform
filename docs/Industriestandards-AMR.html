@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Industriestandards-AMR.mathjax_tmp</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+  </style>
+  <link rel="stylesheet" href="main-design.css" />
+</head>
+<body>
+<div class="main-container">
+<h1 id="standards-für-amr-entwicklung">Standards für
+AMR-Entwicklung</h1>
+<p>Für dein Master-Projekt und die Thesis ist es entscheidend, nicht nur
+„irgendwie“ zu programmieren, sondern sich an etablierte
+Industriestandards zu halten. Das unterscheidet eine Bastelarbeit von
+einer Ingenieursleistung.</p>
+<p>Für deinen AMR (Raspberry Pi 5 + ESP32 + ROS 2) sind folgende
+Standards <strong>verbindlich</strong>, wenn du willst, dass Navigation
+(Nav2) und SLAM später reibungslos funktionieren.</p>
+<h3 id="der-ros-standard-reps-ros-enhancement-proposals">1. Der
+ROS-Standard: REPs (ROS Enhancement Proposals)</h3>
+<p>Das sind die „Gesetze“ der ROS-Welt. Wenn du diese verletzt, wird der
+Roboter in der Simulation (RViz) herumspringen oder gegen Wände
+fahren.</p>
+<ul>
+<li><strong>REP-103: Einheiten &amp; Koordinaten</strong>
+<ul>
+<li><strong>Einheiten:</strong> Wir rechnen <strong>immer</strong> in
+SI-Einheiten.
+<ul>
+<li>Distanz: <strong>Meter</strong> (nicht Millimeter! Deswegen
+<code>0.178</code> statt <code>178</code> in deiner Config).</li>
+<li>Winkel: <strong>Radiant</strong> (nicht Grad!).</li>
+<li>Zeit: <strong>Sekunden</strong>.</li>
+</ul></li>
+<li><strong>Koordinatensystem:</strong>
+<ul>
+<li><strong>X:</strong> Nach vorne (Vorwärtsfahrt).</li>
+<li><strong>Y:</strong> Nach links.</li>
+<li><strong>Z:</strong> Nach oben.</li>
+<li><strong>Rotation:</strong> Rechte-Hand-Regel (Gegen den
+Uhrzeigersinn ist positiv).</li>
+</ul></li>
+<li><em>Konsequenz für dich:</em> Dein ESP32 muss die Encoder-Ticks in
+Meter umrechnen, bevor er sie an den Raspberry Pi sendet.</li>
+</ul></li>
+<li><strong>REP-105: Koordinaten-Frames (Der TF-Tree)</strong> Das ist
+das Rückgrat der Navigation. Dein System muss folgende Kette einhalten:
+<ul>
+<li><code>map</code> (Globale Karte, Fixpunkt)</li>
+<li><code>odom</code> (Startpunkt der Fahrt, driftet mit der Zeit)</li>
+<li><code>base_link</code> (Der Roboter selbst, meistens die Mitte der
+Radachse)</li>
+<li><code>laser_frame</code> (Wo der LiDAR montiert ist)</li>
+<li><em>Konsequenz für dich:</em> Der ESP32 publiziert die
+Transformation <code>odom -&gt; base_link</code>. Der Raspberry Pi
+(SLAM) publiziert <code>map -&gt; odom</code>.</li>
+</ul></li>
+</ul>
+<h3 id="sicherheits-standards-safety">2. Sicherheits-Standards
+(Safety)</h3>
+<p>Bei einem autonomen Roboter darf die Software niemals „einschlafen“,
+während der Motor noch läuft.</p>
+<ul>
+<li><strong>Heartbeat / Dead Man’s Switch:</strong> Der ESP32 darf nicht
+blind fahren. Er muss regelmäßig (z.B. alle 100ms) eine Nachricht vom
+Master (Pi 5) erhalten.
+<ul>
+<li><em>Regel:</em> Bleibt die Nachricht für &gt; 500ms aus (z.B. WLAN
+weg, ROS-Node abgestürzt), müssen die Motoren <strong>sofort
+stoppen</strong> (PWM = 0).</li>
+<li><em>Implementierung:</em> Das bauen wir direkt in die Firmware
+ein.</li>
+</ul></li>
+</ul>
+<h3 id="architektur-standard-hybrid-master-slave">3.
+Architektur-Standard: Hybrid Master-Slave</h3>
+<p>Du hast dies bereits in deiner Thesis definiert, aber hier ist die
+technische Umsetzung:</p>
+<ul>
+<li><strong>Echtzeit-Trennung:</strong>
+<ul>
+<li><strong>Hard Real-Time (ESP32):</strong> Alles, was physikalische
+Schäden verursachen kann oder präzises Timing braucht (Motor-PWM,
+Encoder-Zählen, Not-Stopp).</li>
+<li><strong>Soft Real-Time (Pi 5):</strong> Alles, was „denkt“
+(Pfadplanung, Bilderkennung). Wenn der Pi 5 mal 100ms hängt, darf der
+Roboter nicht crashen (siehe Heartbeat).</li>
+</ul></li>
+</ul>
+<h3 id="code-qualität-best-practices">4. Code-Qualität (Best
+Practices)</h3>
+<p>Für die Benotung der Thesis wichtig:</p>
+<ul>
+<li><strong>Non-Blocking Code (ESP32):</strong> Verwende niemals
+<code>delay()</code> in deiner Hauptschleife. Das blockiert die
+Kommunikation. Wir nutzen <code>millis()</code>-Timer oder FreeRTOS
+Tasks.</li>
+<li><strong>Topic Naming:</strong> Halte dich an ROS 2 Konventionen:
+<ul>
+<li><code>/cmd_vel</code> für Steuerbefehle.</li>
+<li><code>/odom</code> für Odometrie.</li>
+<li><code>/scan</code> für LiDAR-Daten.</li>
+<li><code>/diagnostics</code> für Status (Batterie, Fehler).</li>
+</ul></li>
+</ul>
+<hr />
+<h3 id="zusammenfassung-für-dein-projekt">Zusammenfassung für dein
+Projekt</h3>
+<p>Wenn wir jetzt den Code schreiben, halten wir uns strikt an:</p>
+<ol type="1">
+<li><strong>SI-Einheiten</strong> (Meter, Radiant).</li>
+<li><strong>REP-105 Frames</strong> (<code>odom</code> -&gt;
+<code>base_link</code>).</li>
+<li><strong>Failsafe-Mechanismus</strong> (Kein Heartbeat = Stopp).</li>
+<li><strong>Non-Blocking I/O</strong> (keine <code>delay()</code> im
+Loop).</li>
+</ol>
+</div>
+</body>
+</html>
