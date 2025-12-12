@@ -1,0 +1,25 @@
+# === PlatformIO ===
+.pio/
+.vscode/
+
+# === ROS 2 Build ===
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+
+# === Hailo ===
+*.hef
+hailo_models/
+*.log
+
+# === Python ===
+__pycache__/
+*.pyc
+
+# === macOS ===
+.DS_Store
+*.code-workspace
+
+# === Secrets ===
+*.key
+*.pem
