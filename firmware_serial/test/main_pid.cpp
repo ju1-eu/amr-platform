@@ -21,20 +21,20 @@
  *   ESP32 → Host:  VEL:<v_l>,<v_r>,<pwm_l>,<pwm_r>\n  (Debug)
  */
 
-#include "config.h"
 #include <Arduino.h>
+#include "config.h"
 
 // ==========================================================================
 // PID-REGLER KLASSE
 // ==========================================================================
 
 class PIDController {
-  public:
+public:
     float Kp, Ki, Kd;
-
-    PIDController(float kp, float ki, float kd)
+    
+    PIDController(float kp, float ki, float kd) 
         : Kp(kp), Ki(ki), Kd(kd), integral(0), prev_error(0) {}
-
+    
     /**
      * @brief Berechnet PID-Ausgabe
      * @param setpoint Soll-Wert [m/s]
@@ -44,38 +44,38 @@ class PIDController {
      */
     float compute(float setpoint, float measurement, float dt) {
         float error = setpoint - measurement;
-
+        
         // Integral mit Anti-Windup
         integral += error * dt;
         integral = constrain(integral, -INTEGRAL_MAX, INTEGRAL_MAX);
-
+        
         // Derivative (mit Filter gegen Rauschen)
         float derivative = 0;
         if (dt > 0.001f) {
             derivative = (error - prev_error) / dt;
         }
         prev_error = error;
-
+        
         // PID-Summe
         float output = Kp * error + Ki * integral + Kd * derivative;
-
+        
         return constrain(output, -1.0f, 1.0f);
     }
-
+    
     void reset() {
         integral = 0;
         prev_error = 0;
     }
-
+    
     void setGains(float kp, float ki, float kd) {
         Kp = kp;
         Ki = ki;
         Kd = kd;
-        reset(); // Reset bei Gain-Änderung
+        reset();  // Reset bei Gain-Änderung
     }
 
-  private:
-    static constexpr float INTEGRAL_MAX = 0.5f; // Anti-Windup Limit
+private:
+    static constexpr float INTEGRAL_MAX = 0.5f;  // Anti-Windup Limit
     float integral;
     float prev_error;
 };
@@ -91,7 +91,7 @@ volatile long encoder_ticks_right = 0;
 // --- Geschwindigkeitsmessung ---
 long prev_ticks_left = 0;
 long prev_ticks_right = 0;
-float velocity_left = 0.0f; // Ist-Geschwindigkeit [m/s]
+float velocity_left = 0.0f;   // Ist-Geschwindigkeit [m/s]
 float velocity_right = 0.0f;
 
 // --- Odometrie ---
@@ -100,9 +100,9 @@ float odom_y = 0.0f;
 float odom_theta = 0.0f;
 
 // --- Sollwerte ---
-float target_v = 0.0f;      // Linear [m/s]
-float target_w = 0.0f;      // Angular [rad/s]
-float target_v_left = 0.0f; // Rad-Sollgeschwindigkeit [m/s]
+float target_v = 0.0f;        // Linear [m/s]
+float target_w = 0.0f;        // Angular [rad/s]
+float target_v_left = 0.0f;   // Rad-Sollgeschwindigkeit [m/s]
 float target_v_right = 0.0f;
 
 // --- PID-Regler (pro Rad) ---
@@ -121,15 +121,19 @@ unsigned long last_vel_time = 0;
 
 // --- Status ---
 bool failsafe_active = false;
-bool debug_velocity = false; // VEL-Nachrichten aktivieren
+bool debug_velocity = false;  // VEL-Nachrichten aktivieren
 
 // ==========================================================================
 // INTERRUPT SERVICE ROUTINES
 // ==========================================================================
 
-void IRAM_ATTR isr_encoder_left() { encoder_ticks_left++; }
+void IRAM_ATTR isr_encoder_left() {
+    encoder_ticks_left++;
+}
 
-void IRAM_ATTR isr_encoder_right() { encoder_ticks_right++; }
+void IRAM_ATTR isr_encoder_right() {
+    encoder_ticks_right++;
+}
 
 // ==========================================================================
 // HARDWARE ABSTRACTION LAYER
@@ -156,13 +160,13 @@ void hal_encoder_init() {
     pinMode(PIN_ENC_LEFT_A, INPUT_PULLUP);
     pinMode(PIN_ENC_RIGHT_A, INPUT_PULLUP);
 
-    attachInterrupt(digitalPinToInterrupt(PIN_ENC_LEFT_A), isr_encoder_left,
-                    RISING);
-    attachInterrupt(digitalPinToInterrupt(PIN_ENC_RIGHT_A), isr_encoder_right,
-                    RISING);
+    attachInterrupt(digitalPinToInterrupt(PIN_ENC_LEFT_A), 
+                    isr_encoder_left, RISING);
+    attachInterrupt(digitalPinToInterrupt(PIN_ENC_RIGHT_A), 
+                    isr_encoder_right, RISING);
 }
 
-void hal_encoder_read(long *left, long *right) {
+void hal_encoder_read(long* left, long* right) {
     noInterrupts();
     *left = encoder_ticks_left;
     *right = encoder_ticks_right;
@@ -195,8 +199,7 @@ void hal_motor_set_pwm(uint8_t ch_a, uint8_t ch_b, float speed) {
     }
 
     // PWM berechnen mit Deadzone-Kompensation
-    int pwm =
-        PWM_DEADZONE + (int)(fabs(speed) * (MOTOR_PWM_MAX - PWM_DEADZONE));
+    int pwm = PWM_DEADZONE + (int)(fabs(speed) * (MOTOR_PWM_MAX - PWM_DEADZONE));
     pwm = constrain(pwm, 0, MOTOR_PWM_MAX);
 
     if (speed > 0) {
@@ -213,7 +216,7 @@ void hal_motor_stop() {
     ledcWrite(PWM_CH_LEFT_B, 0);
     ledcWrite(PWM_CH_RIGHT_A, 0);
     ledcWrite(PWM_CH_RIGHT_B, 0);
-
+    
     pwm_left = 0;
     pwm_right = 0;
 }
@@ -245,14 +248,12 @@ void velocity_update(float dt) {
     if (dt > 0.001f) {
         float dist_left = delta_left * METERS_PER_TICK_LEFT;
         float dist_right = delta_right * METERS_PER_TICK_RIGHT;
-
+        
         // Tiefpass-Filter für Rauschunterdrückung
         // v_filtered = alpha * v_new + (1-alpha) * v_old
         const float alpha = 0.3f;
-        velocity_left =
-            alpha * (dist_left / dt) + (1.0f - alpha) * velocity_left;
-        velocity_right =
-            alpha * (dist_right / dt) + (1.0f - alpha) * velocity_right;
+        velocity_left = alpha * (dist_left / dt) + (1.0f - alpha) * velocity_left;
+        velocity_right = alpha * (dist_right / dt) + (1.0f - alpha) * velocity_right;
     }
 }
 
@@ -273,10 +274,8 @@ void odometry_update(float dt) {
     odom_theta += d_theta;
 
     // Normalisieren auf [-π, π]
-    while (odom_theta > PI)
-        odom_theta -= 2.0f * PI;
-    while (odom_theta < -PI)
-        odom_theta += 2.0f * PI;
+    while (odom_theta > PI) odom_theta -= 2.0f * PI;
+    while (odom_theta < -PI) odom_theta += 2.0f * PI;
 }
 
 void odometry_reset() {
@@ -294,8 +293,8 @@ void odometry_reset() {
 // KINEMATIK
 // ==========================================================================
 
-void kinematics_inverse(float v, float w, float *v_left, float *v_right) {
-    *v_left = v - (w * WHEEL_BASE / 2.0f);
+void kinematics_inverse(float v, float w, float* v_left, float* v_right) {
+    *v_left  = v - (w * WHEEL_BASE / 2.0f);
     *v_right = v + (w * WHEEL_BASE / 2.0f);
 }
 
@@ -350,8 +349,7 @@ void serial_process() {
                         float v = buffer.substring(2, comma_pos).toFloat();
                         float w = buffer.substring(comma_pos + 3).toFloat();
 
-                        if (fabs(v) <= MAX_LINEAR_SPEED &&
-                            fabs(w) <= MAX_ANGULAR_SPEED) {
+                        if (fabs(v) <= MAX_LINEAR_SPEED && fabs(w) <= MAX_ANGULAR_SPEED) {
                             target_v = v;
                             target_w = w;
                             last_cmd_time = millis();
@@ -375,7 +373,7 @@ void serial_process() {
                         float kp = buffer.substring(4, c1).toFloat();
                         float ki = buffer.substring(c1 + 1, c2).toFloat();
                         float kd = buffer.substring(c2 + 1).toFloat();
-
+                        
                         pid_left.setGains(kp, ki, kd);
                         pid_right.setGains(kp, ki, kd);
                         Serial.printf("OK:PID=%.2f,%.2f,%.2f\n", kp, ki, kd);
@@ -385,10 +383,12 @@ void serial_process() {
                 else if (buffer == "DEBUG:ON") {
                     debug_velocity = true;
                     Serial.println("OK:DEBUG_ON");
-                } else if (buffer == "DEBUG:OFF") {
+                }
+                else if (buffer == "DEBUG:OFF") {
                     debug_velocity = false;
                     Serial.println("OK:DEBUG_OFF");
-                } else {
+                }
+                else {
                     Serial.println("ERR:UNKNOWN_CMD");
                 }
 
@@ -396,8 +396,7 @@ void serial_process() {
             }
         } else {
             buffer += c;
-            if (buffer.length() > 64)
-                buffer = "";
+            if (buffer.length() > 64) buffer = "";
         }
     }
 }
@@ -406,14 +405,16 @@ void serial_publish_odom() {
     long ticks_left, ticks_right;
     hal_encoder_read(&ticks_left, &ticks_right);
 
-    Serial.printf("ODOM:%ld,%ld,%.4f,%.4f,%.4f\n", ticks_left, ticks_right,
+    Serial.printf("ODOM:%ld,%ld,%.4f,%.4f,%.4f\n",
+                  ticks_left, ticks_right,
                   odom_x, odom_y, odom_theta);
 }
 
 void serial_publish_velocity() {
     if (debug_velocity) {
-        Serial.printf("VEL:%.3f,%.3f,%.3f,%.3f\n", velocity_left,
-                      velocity_right, pwm_left, pwm_right);
+        Serial.printf("VEL:%.3f,%.3f,%.3f,%.3f\n",
+                      velocity_left, velocity_right,
+                      pwm_left, pwm_right);
     }
 }
 
@@ -459,8 +460,7 @@ void setup() {
 
     Serial.println("AMR-ESP32 v0.5.0-pid ready");
     Serial.printf("PID: Kp=%.2f Ki=%.2f Kd=%.2f\n", PID_KP, PID_KI, PID_KD);
-    Serial.println(
-        "Commands: V:v,W:w | RESET_ODOM | PID:Kp,Ki,Kd | DEBUG:ON/OFF");
+    Serial.println("Commands: V:v,W:w | RESET_ODOM | PID:Kp,Ki,Kd | DEBUG:ON/OFF");
 }
 
 void loop() {
