@@ -1,18 +1,13 @@
 // =============================================================================
-// micro-ROS AMR Firmware mit Odometrie (Debug-Version)
-// Version: 2.1.0-debug | Phase 3.3
+// micro-ROS AMR Firmware mit Odometrie
+// Version: 2.1.0 | Phase 3.3
 // =============================================================================
 //
 // Topics:
-//   Publisher:  /odom/x            (std_msgs/Float32)    - Position X [m]
-//   Publisher:  /odom/y            (std_msgs/Float32)    - Position Y [m]
-//   Publisher:  /odom/theta        (std_msgs/Float32)    - Orientation [rad]
+//   Publisher:  /odom              (nav_msgs/Odometry)   - Position & Velocity
 //   Publisher:  /esp32/heartbeat   (std_msgs/Int32)      - Watchdog
 //   Subscriber: /cmd_vel           (geometry_msgs/Twist) - Motorsteuerung
 //   Subscriber: /esp32/led_cmd     (std_msgs/Bool)       - LED-Steuerung
-//
-// HINWEIS: Diese Debug-Version nutzt einfache Float32 statt nav_msgs/Odometry
-//          wegen micro-ROS Buffer-Limits. Für Nav2 wird später konvertiert.
 //
 // Hardware: Seeed Studio XIAO ESP32-S3 + Cytron MDD3A + JGA25-370 Encoder
 // =============================================================================
@@ -25,10 +20,9 @@
 #include <rclc/rclc.h>
 
 #include <geometry_msgs/msg/twist.h>
+#include <nav_msgs/msg/odometry.h>
 #include <std_msgs/msg/bool.h>
-#include <std_msgs/msg/float32.h>
 #include <std_msgs/msg/int32.h>
-// nav_msgs/Odometry deaktiviert - zu groß für micro-ROS Buffer
 
 #include "config.h"
 
@@ -46,13 +40,9 @@ rcl_node_t node;
 
 // Publisher
 rcl_publisher_t pub_heartbeat;
-rcl_publisher_t pub_odom_x;
-rcl_publisher_t pub_odom_y;
-rcl_publisher_t pub_odom_theta;
+rcl_publisher_t pub_odom;
 std_msgs__msg__Int32 msg_heartbeat;
-std_msgs__msg__Float32 msg_odom_x;
-std_msgs__msg__Float32 msg_odom_y;
-std_msgs__msg__Float32 msg_odom_theta;
+nav_msgs__msg__Odometry msg_odom;
 
 // Subscribers
 rcl_subscription_t sub_cmd_vel;
@@ -305,13 +295,45 @@ void checkFailsafe() {
 // =============================================================================
 
 void publish_odometry() {
-    msg_odom_x.data = odom_x;
-    msg_odom_y.data = odom_y;
-    msg_odom_theta.data = odom_theta;
+    // Header
+    msg_odom.header.stamp.sec = millis() / 1000;
+    msg_odom.header.stamp.nanosec = (millis() % 1000) * 1000000;
+    // frame_id wird in setup() gesetzt
 
-    (void)rcl_publish(&pub_odom_x, &msg_odom_x, NULL);
-    (void)rcl_publish(&pub_odom_y, &msg_odom_y, NULL);
-    (void)rcl_publish(&pub_odom_theta, &msg_odom_theta, NULL);
+    // Position
+    msg_odom.pose.pose.position.x = odom_x;
+    msg_odom.pose.pose.position.y = odom_y;
+    msg_odom.pose.pose.position.z = 0.0;
+
+    // Orientation (Quaternion aus theta)
+    // q = [cos(θ/2), 0, 0, sin(θ/2)] für Rotation um Z
+    msg_odom.pose.pose.orientation.x = 0.0;
+    msg_odom.pose.pose.orientation.y = 0.0;
+    msg_odom.pose.pose.orientation.z = sin(odom_theta / 2.0);
+    msg_odom.pose.pose.orientation.w = cos(odom_theta / 2.0);
+
+    // Velocity (im base_link Frame)
+    msg_odom.twist.twist.linear.x = (velocity_left + velocity_right) / 2.0;
+    msg_odom.twist.twist.linear.y = 0.0;
+    msg_odom.twist.twist.linear.z = 0.0;
+    msg_odom.twist.twist.angular.x = 0.0;
+    msg_odom.twist.twist.angular.y = 0.0;
+    msg_odom.twist.twist.angular.z =
+        (velocity_right - velocity_left) / WHEEL_BASE;
+
+    // Covariance (diagonal, vereinfacht)
+    // Pose covariance [x, y, z, roll, pitch, yaw]
+    for (int i = 0; i < 36; i++) {
+        msg_odom.pose.covariance[i] = 0.0;
+        msg_odom.twist.covariance[i] = 0.0;
+    }
+    msg_odom.pose.covariance[0] = 0.01;   // x
+    msg_odom.pose.covariance[7] = 0.01;   // y
+    msg_odom.pose.covariance[35] = 0.03;  // yaw
+    msg_odom.twist.covariance[0] = 0.01;  // vx
+    msg_odom.twist.covariance[35] = 0.03; // vyaw
+
+    (void)rcl_publish(&pub_odom, &msg_odom, NULL);
 }
 
 // =============================================================================
@@ -361,18 +383,18 @@ void setup() {
         &pub_heartbeat, &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "esp32/heartbeat");
 
-    // Publisher: Odometry (als einfache Float32 Topics)
-    rclc_publisher_init_best_effort(
-        &pub_odom_x, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
-        "odom/x");
+    // Publisher: Odometry
+    rclc_publisher_init_default(
+        &pub_odom, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(nav_msgs, msg, Odometry),
+        "odom");
 
-    rclc_publisher_init_best_effort(
-        &pub_odom_y, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
-        "odom/y");
-
-    rclc_publisher_init_best_effort(
-        &pub_odom_theta, &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32), "odom/theta");
+    // Frame IDs setzen (statische Strings)
+    msg_odom.header.frame_id.data = (char *)"odom";
+    msg_odom.header.frame_id.size = 4;
+    msg_odom.header.frame_id.capacity = 5;
+    msg_odom.child_frame_id.data = (char *)"base_link";
+    msg_odom.child_frame_id.size = 9;
+    msg_odom.child_frame_id.capacity = 10;
 
     // Subscriber: cmd_vel
     rclc_subscription_init_best_effort(
