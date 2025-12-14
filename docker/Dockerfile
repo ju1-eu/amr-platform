@@ -10,8 +10,8 @@ RUN apt-get update && apt-get install -y \
     nano \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Rosdep initialisieren
-RUN rosdep init && rosdep update
+# Initialisiert rosdep, ignoriert Fehler falls schon vorhanden, und macht dann das Update
+RUN (rosdep init || true) && rosdep update
 
 # 3. Arbeitsverzeichnis setzen
 WORKDIR /root/ros2_ws
