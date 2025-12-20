@@ -1,4 +1,5 @@
 services:
+  # micro-ROS Agent für ESP32-S3
   microros_agent:
     image: microros/micro-ros-agent:humble
     container_name: amr_agent
@@ -9,28 +10,16 @@ services:
     devices:
       - /dev/ttyACM0:/dev/ttyACM0
 
-  rplidar:
-    image: ros:humble-ros-base
-    container_name: amr_lidar
-    network_mode: host
-    privileged: true
-    restart: always
-    devices:
-      - /dev/ttyUSB0:/dev/ttyUSB0
-    volumes:
-      - ../ros2_ws:/root/ros2_ws
-    command: >
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash 2>/dev/null || true &&
-        ros2 launch sllidar_ros2 sllidar_a1_launch.py
-      "
-
+  # ROS 2 Humble Workspace (inkl. RPLidar)
   amr_dev:
     build: .
     container_name: amr_base
     network_mode: host
     privileged: true
+    stdin_open: true
+    tty: true
     volumes:
       - ../ros2_ws:/root/ros2_ws
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
     command: tail -f /dev/null
