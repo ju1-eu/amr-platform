@@ -6,7 +6,7 @@ services:
     network_mode: host  # Wichtig für DDS Kommunikation!
     privileged: true    # Zugriff auf USB Hardware
     restart: always
-    command: serial --dev /dev/ttyACM0 -b 115200
+    command: serial --dev /dev/ttyACM0 -b 921600
     devices:
       - /dev/ttyACM0:/dev/ttyACM0
 

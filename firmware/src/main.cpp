@@ -440,7 +440,7 @@ void cb_led(const void *msgin) {
 void setup() {
     // 1. Hardware Init
     hal_init_complete();
-    Serial.begin(115200);
+    Serial.begin(921600);
 
     // 2. Shared Memory & Mutex Init
     dataMutex = xSemaphoreCreateMutex();

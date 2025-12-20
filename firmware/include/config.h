@@ -120,7 +120,7 @@
 // ==========================================================================
 
 // Erhöht auf 1000ms für stabilere DDS-Verbindung (verhindert Ruckeln)
-#define FAILSAFE_TIMEOUT_MS 4000
+#define FAILSAFE_TIMEOUT_MS 1000
 
 #define ENABLE_TASK_WDT true
 #define TASK_WDT_TIMEOUT_S 5
