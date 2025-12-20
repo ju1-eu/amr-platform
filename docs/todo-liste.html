@@ -96,10 +96,10 @@
 <h1 id="todo-liste-amr-projekt">ToDo-Liste AMR-Projekt</h1>
 <blockquote>
 <p><strong>Stand:</strong> 2025-12-20 | <strong>Aktuelle Phase:</strong>
-3 (RPLidar)</p>
+4 (URDF/TF/EKF)</p>
 </blockquote>
 <hr />
-<h2 id="phasen-übersicht">📊 Phasen-Übersicht</h2>
+<h2 id="phasen-übersicht">Phasen-Übersicht</h2>
 <table class="table table-compact">
 <thead>
 <tr>
@@ -111,23 +111,23 @@
 <tbody>
 <tr>
 <td>Phase 1</td>
-<td>micro-ROS auf ESP32-S3 (USB-Serial)</td>
+<td>micro-ROS auf ESP32-S3</td>
 <td>✅ Abgeschlossen</td>
 </tr>
 <tr>
 <td>Phase 2</td>
 <td>Docker-Infrastruktur</td>
-<td>✅ Vorhanden</td>
+<td>✅ Abgeschlossen</td>
 </tr>
 <tr>
 <td>Phase 3</td>
 <td>RPLidar A1 Integration</td>
-<td>◄── <strong>AKTUELL</strong></td>
+<td>✅ Abgeschlossen</td>
 </tr>
 <tr>
 <td>Phase 4</td>
-<td>EKF Sensor Fusion</td>
-<td>⬜</td>
+<td>URDF + TF + EKF</td>
+<td>◄── <strong>NÄCHSTE</strong></td>
 </tr>
 <tr>
 <td>Phase 5</td>
@@ -151,7 +151,7 @@ USB-CDC (Serial)</label></li>
 <li><label><input type="checkbox" checked="" />Dual-Core FreeRTOS (Core
 0: Control, Core 1: Comms)</label></li>
 <li><label><input type="checkbox" checked="" /><code>/cmd_vel</code> →
-Motorsteuerung (Cytron MDD3A)</label></li>
+Motorsteuerung</label></li>
 <li><label><input type="checkbox" checked="" /><code>/odom_raw</code> →
 Odometrie (Pose2D)</label></li>
 <li><label><input type="checkbox"
@@ -161,10 +161,37 @@ Hz)</label></li>
 Timeout)</label></li>
 <li><label><input type="checkbox" checked="" />Feedforward-Steuerung
 (Gain=2.0)</label></li>
-<li><label><input type="checkbox" checked="" />PWM-Kanäle getauscht
-(A↔︎B)</label></li>
 </ul>
-<h3 id="konfiguration">Konfiguration</h3>
+<hr />
+<h2 id="phase-2-docker-infrastruktur-abgeschlossen">✅ Phase 2:
+Docker-Infrastruktur – ABGESCHLOSSEN</h2>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" /><code>amr_agent</code>
+Container (micro-ROS Agent)</label></li>
+<li><label><input type="checkbox" checked="" /><code>amr_dev</code>
+Container (ROS 2 Humble Workspace)</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>docker compose up -d</code> funktioniert</label></li>
+<li><label><input type="checkbox" checked="" />Volumes für ros2_ws
+gemountet</label></li>
+</ul>
+<hr />
+<h2 id="phase-3-rplidar-a1-abgeschlossen">✅ Phase 3: RPLidar A1 –
+ABGESCHLOSSEN</h2>
+<h3 id="verifiziert-2025-12-20">Verifiziert (2025-12-20)</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />sllidar_ros2
+gebaut</label></li>
+<li><label><input type="checkbox" checked="" /><code>/scan</code>
+publiziert (~7.6 Hz)</label></li>
+<li><label><input type="checkbox" checked="" />Scan-Daten plausibel
+(0.05-12m Range)</label></li>
+<li><label><input type="checkbox" checked="" />frame_id:
+<code>laser</code></label></li>
+<li><label><input type="checkbox" checked="" />docker-compose.yml
+aktualisiert</label></li>
+</ul>
+<h3 id="hardware-info">Hardware-Info</h3>
 <table class="table table-compact">
 <thead>
 <tr>
@@ -174,357 +201,112 @@ Timeout)</label></li>
 </thead>
 <tbody>
 <tr>
-<td>Baudrate</td>
-<td>921600</td>
+<td>S/N</td>
+<td>74A5FA89C7E19EC8BCE499F0FF725670</td>
 </tr>
 <tr>
-<td>Feedforward Gain</td>
-<td>2.0</td>
+<td>Firmware</td>
+<td>1.29</td>
 </tr>
 <tr>
-<td>PID</td>
-<td>Deaktiviert (Kp=0)</td>
+<td>Scan Mode</td>
+<td>Sensitivity</td>
 </tr>
 <tr>
-<td>Failsafe Timeout</td>
-<td>2000 ms</td>
+<td>Sample Rate</td>
+<td>8 kHz</td>
 </tr>
 <tr>
-<td>Loop Rate</td>
-<td>100 Hz</td>
-</tr>
-<tr>
-<td>Odom Publish</td>
-<td>20 Hz</td>
-</tr>
-</tbody>
-</table>
-<h3 id="testergebnisse">Testergebnisse</h3>
-<table class="table table-compact">
-<thead>
-<tr>
-<th>Test</th>
-<th>Status</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Vorwärts</td>
-<td>✅</td>
-</tr>
-<tr>
-<td>Rückwärts</td>
-<td>✅</td>
-</tr>
-<tr>
-<td>Drehen links</td>
-<td>✅</td>
-</tr>
-<tr>
-<td>Drehen rechts</td>
-<td>✅</td>
-</tr>
-<tr>
-<td>Failsafe</td>
-<td>✅</td>
-</tr>
-<tr>
-<td>Odom plausibel</td>
-<td>✅</td>
+<td>Frequenz</td>
+<td>~7.6 Hz</td>
 </tr>
 </tbody>
 </table>
 <hr />
-<h2 id="phase-2-docker-infrastruktur-vorhanden">✅ Phase 2:
-Docker-Infrastruktur – VORHANDEN</h2>
-<h3 id="container">Container</h3>
-<table class="table table-compact">
-<thead>
-<tr>
-<th>Container</th>
-<th>Image</th>
-<th>Funktion</th>
-<th>Status</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>amr_agent</code></td>
-<td><code>microros/micro-ros-agent:humble</code></td>
-<td>Serial Agent</td>
-<td>✅</td>
-</tr>
-<tr>
-<td><code>amr_dev</code></td>
-<td>Custom (ROS 2 Humble)</td>
-<td>Workspace</td>
-<td>✅</td>
-</tr>
-</tbody>
-</table>
-<h3 id="docker-compose.yml">docker-compose.yml</h3>
-<div class="sourceCode" id="cb1"><pre
-class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">services</span><span class="kw">:</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">microros_agent</span><span class="kw">:</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">image</span><span class="kw">:</span><span class="at"> microros/micro-ros-agent:humble</span></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">command</span><span class="kw">:</span><span class="at"> serial --dev /dev/ttyACM0 -b 921600</span></span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">amr_dev</span><span class="kw">:</span></span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">build</span><span class="kw">:</span><span class="at"> .</span></span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">network_mode</span><span class="kw">:</span><span class="at"> host</span></span></code></pre></div>
+<h2 id="phase-4-urdf-tf-ekf-nächste">🔜 Phase 4: URDF + TF + EKF –
+NÄCHSTE</h2>
+<ul class="task-list">
+<li><label><input type="checkbox" />URDF erstellen</label>
+<ul class="task-list">
+<li><label><input type="checkbox" /><code>base_footprint</code>
+(Boden)</label></li>
+<li><label><input type="checkbox" /><code>base_link</code>
+(Chassis)</label></li>
+<li><label><input type="checkbox" /><code>laser</code>
+Frame</label></li>
+</ul></li>
+<li><label><input type="checkbox" /><code>robot_state_publisher</code>
+für statische TFs</label></li>
+<li><label><input type="checkbox" /><code>odom_converter.py</code>
+Bridge Node</label>
+<ul class="task-list">
+<li><label><input type="checkbox" /><code>/odom_raw</code> →
+<code>/odom</code></label></li>
+<li><label><input type="checkbox" />TF:
+<code>odom → base_footprint</code></label></li>
+</ul></li>
+<li><label><input type="checkbox" />Optional: EKF
+(robot_localization)</label></li>
+</ul>
+<h3 id="tf-baum-ziel">TF-Baum Ziel</h3>
+<pre><code>odom → base_footprint → base_link → laser</code></pre>
 <hr />
-<h2 id="phase-3-rplidar-a1-integration-aktuell">🎯 Phase 3: RPLidar A1
-Integration – AKTUELL</h2>
-<h3 id="hardware">Hardware</h3>
+<h2 id="phase-5-slam">⬜ Phase 5: SLAM</h2>
+<ul class="task-list">
+<li><label><input type="checkbox" /><code>slam_toolbox</code>
+installieren</label></li>
+<li><label><input type="checkbox" />Online Async SLAM</label></li>
+<li><label><input type="checkbox" />Testraum kartieren</label></li>
+<li><label><input type="checkbox" />Karte speichern</label></li>
+</ul>
+<hr />
+<h2 id="phase-6-nav2">⬜ Phase 6: Nav2</h2>
+<ul class="task-list">
+<li><label><input type="checkbox" />Nav2 Stack</label></li>
+<li><label><input type="checkbox" />AMCL Lokalisierung</label></li>
+<li><label><input type="checkbox" />Costmap</label></li>
+<li><label><input type="checkbox" />Autonome Navigation</label></li>
+</ul>
+<hr />
+<h2 id="aktuelle-hardware-ports">Aktuelle Hardware Ports</h2>
 <table class="table table-compact">
 <thead>
 <tr>
-<th>Komponente</th>
+<th>Device</th>
 <th>Port</th>
-<th>Status</th>
+<th>Funktion</th>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>ESP32-S3</td>
+<td><code>/dev/ttyACM0</code></td>
+<td>micro-ROS (921600 Baud)</td>
+</tr>
 <tr>
 <td>RPLidar A1</td>
 <td><code>/dev/ttyUSB0</code></td>
-<td>✅ Erkannt</td>
-</tr>
-</tbody>
-</table>
-<h3 id="aufgaben">Aufgaben</h3>
-<ul class="task-list">
-<li><label><input type="checkbox" /><code>rplidar_ros</code> Package
-installieren</label></li>
-<li><label><input type="checkbox" />Launch-File erstellen</label></li>
-<li><label><input type="checkbox" /><code>/scan</code> Topic
-verifizieren</label></li>
-<li><label><input type="checkbox" />Scan-Daten visualisieren
-(RViz2)</label></li>
-<li><label><input type="checkbox" />Frame <code>laser</code>
-konfigurieren</label></li>
-</ul>
-<h3 id="geplante-topics">Geplante Topics</h3>
-<table class="table table-compact">
-<thead>
-<tr>
-<th>Topic</th>
-<th>Typ</th>
-<th>Frequenz</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>/scan</code></td>
-<td><code>sensor_msgs/LaserScan</code></td>
-<td>5-10 Hz</td>
-</tr>
-</tbody>
-</table>
-<h3 id="validierung">Validierung</h3>
-<table class="table table-compact">
-<thead>
-<tr>
-<th>Test</th>
-<th>Kriterium</th>
-<th>Status</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>RPLidar startet</td>
-<td>Motor dreht</td>
-<td>⬜</td>
-</tr>
-<tr>
-<td><code>/scan</code> publiziert</td>
-<td>Daten vorhanden</td>
-<td>⬜</td>
-</tr>
-<tr>
-<td>Range korrekt</td>
-<td>0.15m - 12m</td>
-<td>⬜</td>
-</tr>
-<tr>
-<td>RViz2 Visualisierung</td>
-<td>Scan sichtbar</td>
-<td>⬜</td>
+<td>LaserScan</td>
 </tr>
 </tbody>
 </table>
 <hr />
-<h2 id="phase-4-ekf-sensor-fusion">📋 Phase 4: EKF Sensor Fusion</h2>
-<h3 id="aufgaben-1">Aufgaben</h3>
-<ul class="task-list">
-<li><label><input type="checkbox" /><code>robot_localization</code>
-Package</label></li>
-<li><label><input type="checkbox" />EKF Node konfigurieren</label></li>
-<li><label><input type="checkbox" />Odom + IMU fusionieren
-(optional)</label></li>
-<li><label><input type="checkbox" /><code>/odom</code> →
-<code>/odometry/filtered</code></label></li>
-<li><label><input type="checkbox" />TF: <code>odom</code> →
-<code>base_link</code></label></li>
-</ul>
-<h3 id="geplante-topics-1">Geplante Topics</h3>
-<table class="table table-compact">
-<thead>
-<tr>
-<th>Topic</th>
-<th>Typ</th>
-<th>Quelle</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>/odometry/filtered</code></td>
-<td><code>nav_msgs/Odometry</code></td>
-<td>EKF</td>
-</tr>
-<tr>
-<td><code>/tf</code></td>
-<td><code>tf2_msgs/TFMessage</code></td>
-<td>EKF</td>
-</tr>
-</tbody>
-</table>
-<hr />
-<h2 id="phase-5-slam-slam_toolbox">📋 Phase 5: SLAM (slam_toolbox)</h2>
-<h3 id="aufgaben-2">Aufgaben</h3>
-<ul class="task-list">
-<li><label><input type="checkbox" /><code>slam_toolbox</code>
-konfigurieren</label></li>
-<li><label><input type="checkbox" />Online Async SLAM</label></li>
-<li><label><input type="checkbox" />Testraum kartieren</label></li>
-<li><label><input type="checkbox" />Karte speichern (PGM +
-YAML)</label></li>
-</ul>
-<h3 id="abhängigkeiten">Abhängigkeiten</h3>
-<ul>
-<li>Phase 3 (RPLidar) ✅</li>
-<li>Phase 4 (EKF) – optional, aber empfohlen</li>
-</ul>
-<hr />
-<h2 id="phase-6-nav2-autonome-navigation">📋 Phase 6: Nav2 Autonome
-Navigation</h2>
-<h3 id="aufgaben-3">Aufgaben</h3>
-<ul class="task-list">
-<li><label><input type="checkbox" />Nav2 Stack installieren</label></li>
-<li><label><input type="checkbox" />AMCL Lokalisierung</label></li>
-<li><label><input type="checkbox" />Costmaps konfigurieren</label></li>
-<li><label><input type="checkbox" />Planner (NavFn / Smac)</label></li>
-<li><label><input type="checkbox" />Controller (DWB / RPP)</label></li>
-<li><label><input type="checkbox" />Punkt-zu-Punkt
-Navigation</label></li>
-</ul>
-<h3 id="abhängigkeiten-1">Abhängigkeiten</h3>
-<ul>
-<li>Phase 5 (SLAM / Karte)</li>
-</ul>
-<hr />
-<h2 id="hardware-übersicht">🔧 Hardware-Übersicht</h2>
-<table class="table table-compact">
-<thead>
-<tr>
-<th>Komponente</th>
-<th>Spezifikation</th>
-<th>Status</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Seeed XIAO ESP32-S3</td>
-<td>Dual-Core, USB-CDC</td>
-<td>✅ Aktiv</td>
-</tr>
-<tr>
-<td>Cytron MDD3A</td>
-<td>Dual-PWM, 4-16V</td>
-<td>✅ Aktiv</td>
-</tr>
-<tr>
-<td>JGA25-370 (2×)</td>
-<td>12V DC + Encoder</td>
-<td>✅ Aktiv</td>
-</tr>
-<tr>
-<td>Raspberry Pi 5</td>
-<td>8GB, ROS 2 Humble</td>
-<td>✅ Aktiv</td>
-</tr>
-<tr>
-<td>RPLidar A1</td>
-<td>360° 2D Lidar</td>
-<td>✅ Erkannt</td>
-</tr>
-<tr>
-<td>Hailo-8L</td>
-<td>AI Accelerator</td>
-<td>⬜ Phase 6+</td>
-</tr>
-</tbody>
-</table>
-<hr />
-<h2 id="projekt-struktur">📁 Projekt-Struktur</h2>
-<pre><code>amr-platform/
-├── firmware/                 # ◄── AKTIV (v3.2.0)
-│   ├── include/config.h
-│   ├── src/main.cpp
-│   └── platformio.ini
-├── docker/
-│   └── docker-compose.yml
-├── ros2_ws/
-│   └── src/
-├── docs/
-│   ├── phases/
-│   │   └── 01-microros-esp32s3.md
-│   └── phase1-befehle.md
-└── scripts/</code></pre>
-<hr />
-<h2 id="zeitplan">📅 Zeitplan</h2>
-<pre><code>Woche:  1  2  3  4  5  6  7  8
-        ════════════════════════════════
-Phase 1 ████                             ✅ Abgeschlossen
-Phase 2 ████                             ✅ Vorhanden
-Phase 3       ████                       ◄── AKTUELL
-Phase 4             ████
-Phase 5                   ████
-Phase 6                         ████
-        ════════════════════════════════</code></pre>
-<hr />
-<h2 id="checkliste-phase-3-abgeschlossen-wenn">✅ Checkliste: Phase 3
-abgeschlossen wenn</h2>
-<ul class="task-list">
-<li><label><input type="checkbox" />RPLidar startet
-automatisch</label></li>
-<li><label><input type="checkbox" /><code>/scan</code> publiziert
-Daten</label></li>
-<li><label><input type="checkbox" />RViz2 zeigt Scan
-korrekt</label></li>
-<li><label><input type="checkbox" />Frame <code>laser</code> →
-<code>base_link</code> TF</label></li>
-<li><label><input type="checkbox" />Dokumentation
-aktualisiert</label></li>
-<li><label><input type="checkbox" />Code committet</label></li>
-</ul>
-<hr />
-<h2 id="quick-start-phase-1">🚀 Quick Start (Phase 1)</h2>
-<h3 id="nach-pi-reboot">Nach Pi Reboot</h3>
+<h2 id="quick-reference">Quick Reference</h2>
+<h3 id="container-starten">Container starten</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> ~/amr-platform/docker</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose up <span class="at">-d</span></span></code></pre></div>
+<h3 id="rplidar-starten">RPLidar starten</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec amr_dev bash</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="bu">source</span> /opt/ros/humble/setup.bash</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="bu">source</span> /root/ros2_ws/install/setup.bash</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="ex">ros2</span> launch sllidar_ros2 sllidar_a1_launch.py serial_port:=/dev/ttyUSB0</span></code></pre></div>
+<h3 id="topics-prüfen">Topics prüfen</h3>
 <div class="sourceCode" id="cb4"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> ~/amr-platform/docker</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose up <span class="at">-d</span></span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="fu">sleep</span> 5</span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose logs microros_agent <span class="at">--tail</span> 5</span></code></pre></div>
-<h3 id="motor-test">Motor-Test</h3>
-<div class="sourceCode" id="cb5"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose exec amr_dev bash</span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="bu">source</span> /opt/ros/humble/setup.bash</span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="ex">ros2</span> topic pub /cmd_vel geometry_msgs/msg/Twist <span class="dt">\</span></span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;{linear: {x: 0.15}, angular: {z: 0.0}}&quot;</span> <span class="at">-r</span> 10</span></code></pre></div>
-<hr />
-<p><em>Aktualisiert: 2025-12-20 | Phase 1 abgeschlossen, Phase 3
-bereit</em></p>
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ros2</span> topic list</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">ros2</span> topic hz /scan</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="ex">ros2</span> topic echo /scan <span class="at">--once</span></span></code></pre></div>
 </div>
 </body>
 </html>
