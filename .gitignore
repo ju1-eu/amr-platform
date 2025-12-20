@@ -39,3 +39,4 @@ secrets/
 # Generierte HTML-Dateien
 docs/*.html
 start.html
+docs/_site/
