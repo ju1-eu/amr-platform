@@ -16,6 +16,8 @@ RUN apt-get update && apt-get install -y \
     ros-humble-tf2-ros \
     ros-humble-tf2-tools \
     ros-humble-xacro \
+    ros-humble-ament-cmake \
+    python3-ament-package \
     && rm -rf /var/lib/apt/lists/*
 
 # Initialisiert rosdep, ignoriert Fehler falls schon vorhanden
