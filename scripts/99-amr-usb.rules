@@ -1,0 +1,10 @@
+# /etc/udev/rules.d/99-amr-usb.rules
+# Stabile Symlinks fuer AMR-Geraete
+#
+# RPLidar A1 (Silicon Labs CP210x)
+# Vendor: 10c4, Product: ea60
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="rplidar", MODE="0666"
+
+# ESP32-S3 (Espressif USB JTAG/serial)
+# Vendor: 303a, Product: 1001
+SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="1001", SYMLINK+="esp32", MODE="0666"

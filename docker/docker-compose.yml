@@ -6,9 +6,9 @@ services:
     network_mode: host
     privileged: true
     restart: always
-    command: serial --dev /dev/ttyACM0 -b 921600
+    command: serial --dev /dev/esp32 -b 921600
     devices:
-      - /dev/ttyACM0:/dev/ttyACM0
+      - /dev/esp32:/dev/esp32
 
   # ROS 2 Humble Workspace (inkl. RPLidar, TF, URDF)
   amr_dev:
@@ -21,6 +21,5 @@ services:
     volumes:
       - ../ros2_ws:/root/ros2_ws
     devices:
-      - /dev/ttyUSB0:/dev/ttyUSB0
-      - /dev/ttyUSB1:/dev/ttyUSB1
+      - /dev/rplidar:/dev/rplidar
     command: tail -f /dev/null

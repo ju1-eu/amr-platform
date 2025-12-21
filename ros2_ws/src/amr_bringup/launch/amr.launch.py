@@ -11,7 +11,7 @@ TF-Baum nach Start:
 
 Aufruf:
   ros2 launch amr_bringup amr.launch.py
-  ros2 launch amr_bringup amr.launch.py serial_port:=/dev/ttyUSB1
+  ros2 launch amr_bringup amr.launch.py serial_port:=/dev/ttyUSB0
 """
 
 from launch import LaunchDescription
@@ -27,8 +27,8 @@ def generate_launch_description():
     # Launch-Argumente
     serial_port_arg = DeclareLaunchArgument(
         'serial_port',
-        default_value='/dev/ttyUSB0',
-        description='Serial port for RPLidar'
+        default_value='/dev/rplidar',
+        description='Serial port for RPLidar (use /dev/rplidar with udev rule)'
     )
     serial_port = LaunchConfiguration('serial_port')
 
