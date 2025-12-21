@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 r"""
-md-to-html-converter.py — Markdown → HTML mit Mermaid- & MathJax-Support
+md_to_html_converter.py — Markdown → HTML mit Mermaid- & MathJax-Support
 
 Zweck
 -----
@@ -188,63 +188,93 @@ return {
 
 
 def enhance_css_file():
-    """Erweitert 'main-design.css' idempotent um Regeln für Mermaid/Charts/Math."""
+    """Erweitert/aktualisiert 'main-design.css' idempotent um Regeln für Mermaid/Charts/Math."""
     css_path = Path(CSS_FILE)
     if not css_path.exists():
         print(f"Warnung: CSS-Datei '{CSS_FILE}' nicht gefunden.")
         return
 
-    marker = "/* === MD-TO-HTML-CONVERTER EXTENSIONS ==="
-    additional_css = """
-/* === MD-TO-HTML-CONVERTER EXTENSIONS === */
+    marker_begin = "/* === MD-TO-HTML-CONVERTER EXTENSIONS === */"
+    marker_end   = "/* === END MD-TO-HTML-CONVERTER EXTENSIONS === */"
+
+    additional_css = f"""
+{marker_begin}
 
 /* Mermaid-Diagramme */
-.mermaid {
+.mermaid {{
   text-align: center;
   margin: 1.5em 0;
-}
-pre.mermaid {
+}}
+pre.mermaid {{
   background: transparent;
   border: none;
   padding: 0;
-}
+}}
 
 /* Math-Formeln */
-.math-inline {
+.math-inline {{
   display: inline;
-}
-.math-display {
+}}
+.math-display {{
   display: block;
   text-align: center;
   margin: 1.5em 0;
   overflow-x: auto;
-}
+}}
 
 /* Tabellen */
-.table {
+.table {{
   width: 100%;
   border-collapse: collapse;
   margin: 1em 0;
-}
-.table th, .table td {
+}}
+.table th, .table td {{
   border: 1px solid #ddd;
   padding: 0.5em;
   text-align: left;
-}
-.table th {
-  background-color: #f5f5f5;
-}
-.table-compact th, .table-compact td {
+}}
+
+/* Tabellenkopf: dunkelblau + weiße Schrift */
+.table thead th,
+.table tr:first-child th {{
+  background-color: #0b2d4d;
+  color: #ffffff;
+}}
+.table thead {{
+  border-bottom: 2px solid #0b2d4d;
+}}
+
+.table-compact th, .table-compact td {{
   padding: 0.3em 0.5em;
-}
+}}
 
-/* === END MD-TO-HTML-CONVERTER EXTENSIONS === */
-"""
-    content = css_path.read_text(encoding='utf-8')
-    if marker in content:
-        return  # bereits erweitert
+{marker_end}
+""".strip() + "\n"
 
-    with open(css_path, 'a', encoding='utf-8') as f:
+    content = css_path.read_text(encoding="utf-8")
+
+    # Falls Block existiert: ersetzen (idempotent + updatefähig)
+    if marker_begin in content and marker_end in content:
+        pattern = re.compile(
+            re.escape(marker_begin) + r".*?" + re.escape(marker_end),
+            flags=re.DOTALL
+        )
+        new_content, n = pattern.subn(additional_css.strip(), content, count=1)
+        if n:
+            css_path.write_text(new_content + ("\n" if not new_content.endswith("\n") else ""), encoding="utf-8")
+            print(f"✓ CSS Extensions aktualisiert: {CSS_FILE}")
+        return
+
+    # Falls Marker kaputt/teilweise vorhanden: Block hinten neu anhängen
+    if marker_begin in content and marker_end not in content:
+        print(f"Warnung: Marker-Bereich in '{CSS_FILE}' unvollständig. Hänge neuen Block an.")
+        content = content.rstrip() + "\n\n" + additional_css
+        css_path.write_text(content, encoding="utf-8")
+        print(f"✓ CSS erweitert: {CSS_FILE}")
+        return
+
+    # Normalfall: anhängen
+    with open(css_path, "a", encoding="utf-8") as f:
         f.write("\n" + additional_css)
     print(f"✓ CSS erweitert: {CSS_FILE}")
 
