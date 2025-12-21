@@ -1,0 +1,414 @@
+% =============================================================================
+% AMR-Roadmap (XeLaTeX) – Project Handbook with Master-grade design
+% =============================================================================
+\documentclass[a4paper,12pt]{article}
+
+% -----------------------------------------------------------------------------
+% Sprache, Fonts, Typografie
+% -----------------------------------------------------------------------------
+\usepackage[ngerman]{babel}
+\usepackage{fontspec}
+\defaultfontfeatures{Ligatures=TeX}
+
+% Portable Font-Fallbacks (macOS → TeX Live)
+\IfFontExistsTF{Palatino}{\setmainfont{Palatino}}{\setmainfont{TeX Gyre Pagella}}
+\IfFontExistsTF{Helvetica}{\setsansfont{Helvetica}}{\setsansfont{TeX Gyre Heros}}
+\IfFontExistsTF{Menlo}{\setmonofont{Menlo}}{\setmonofont{Latin Modern Mono}}
+
+\usepackage{microtype}
+
+% -----------------------------------------------------------------------------
+% Mathe & Einheiten
+% -----------------------------------------------------------------------------
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{siunitx}
+\sisetup{
+  locale = DE,
+  detect-all,
+  per-mode = symbol,
+  input-decimal-markers = {.,,}
+}
+\DeclareSIUnit{\baud}{baud}
+
+
+
+% -----------------------------------------------------------------------------
+% Grafik & Zeichnen (TikZ)
+% -----------------------------------------------------------------------------
+\usepackage{tikz}
+\usetikzlibrary{shapes, arrows.meta, positioning, fit, backgrounds, calc}
+\usepackage{graphicx}
+\graphicspath{{./}{./images/}}
+
+% Floats: benötigt für [H] in Fragmenten (z. B. Phase 1)
+\usepackage{float}
+
+% -----------------------------------------------------------------------------
+% Layout & Struktur
+% -----------------------------------------------------------------------------
+\usepackage{geometry}
+\geometry{
+  a4paper,
+  left=2.5cm,
+  right=2.5cm,
+  top=2.5cm,
+  bottom=2.5cm,
+  includeheadfoot
+}
+
+\usepackage{setspace}
+\setstretch{1.15}
+
+\usepackage{parskip}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.6em}
+
+\usepackage{enumitem}
+\setlist{itemsep=0.2em, topsep=0.4em}
+
+% Gegen Overfull bei langen URLs/Commands (ohne \sloppy)
+\setlength{\emergencystretch}{2em}
+\raggedbottom
+
+% -----------------------------------------------------------------------------
+% Farben (Style-Profil)
+% -----------------------------------------------------------------------------
+\usepackage[table]{xcolor}
+\definecolor{arduinoblue}{RGB}{0,151,156}
+
+\definecolor{codebg}{RGB}{248,248,248}
+\definecolor{codeframe}{RGB}{220,220,220}
+
+\definecolor{keywordcolor}{RGB}{0, 90, 160}
+\definecolor{commentcolor}{RGB}{90, 90, 90}
+\definecolor{stringcolor}{RGB}{180, 50, 50}
+
+\definecolor{infoboxbg}{RGB}{236, 243, 248}
+\definecolor{infoboxframe}{RGB}{85, 110, 130}
+
+\definecolor{warnbg}{RGB}{252, 244, 232}
+\definecolor{warnframe}{RGB}{170, 120, 40}
+
+\definecolor{tipbg}{RGB}{238, 248, 240}
+\definecolor{tipframe}{RGB}{70, 130, 90}
+
+% -----------------------------------------------------------------------------
+% Überschriften (Style-Profil)
+% -----------------------------------------------------------------------------
+\usepackage{sectsty}
+\allsectionsfont{\sffamily\bfseries}
+
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{2}
+
+% -----------------------------------------------------------------------------
+% Code-Listings (Style-Profil)
+% -----------------------------------------------------------------------------
+\usepackage{listings}
+
+\lstdefinestyle{arduino}{
+  language=C++,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{keywordcolor}\bfseries,
+  commentstyle=\color{commentcolor},
+  stringstyle=\color{stringcolor},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  frame=single,
+  framesep=4pt,
+  rulecolor=\color{codeframe},
+  backgroundcolor=\color{codebg},
+  breaklines=true,
+  breakatwhitespace=true,
+  showstringspaces=false,
+  tabsize=2,
+  captionpos=b,
+  xleftmargin=12pt,
+  xrightmargin=4pt,
+  aboveskip=1.2em,
+  belowskip=1.2em
+}
+
+% Shell/Terminal: bewusst "ruhiger" (keine Zeilennummern)
+\lstdefinestyle{shell}{
+  language=bash,
+  basicstyle=\ttfamily\small,
+  numbers=none,
+  frame=single,
+  framesep=4pt,
+  rulecolor=\color{codeframe},
+  backgroundcolor=\color{codebg},
+  breaklines=true,
+  showstringspaces=false,
+  xleftmargin=12pt,
+  aboveskip=1.2em,
+  belowskip=1.2em
+}
+
+\lstset{style=arduino}
+
+% -----------------------------------------------------------------------------
+% Info-Boxen (Style-Profil)
+% -----------------------------------------------------------------------------
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable}
+
+\tcbset{
+  commonstyle/.style={
+    fonttitle=\bfseries\sffamily,
+    breakable,
+    enhanced,
+    boxrule=0.5pt,
+    arc=3pt,
+    left=8pt, right=8pt, top=8pt, bottom=8pt,
+    before skip=1em, after skip=1em
+  }
+}
+
+% Info (Standard)
+\newtcolorbox{infobox}[1][]{
+  commonstyle,
+  colback=infoboxbg,
+  colframe=infoboxframe,
+  title={#1},
+  overlay unbroken and first={
+    \node[anchor=north east, text=infoboxframe, font=\huge\bfseries, inner sep=3mm]
+      at (frame.north east) {i};
+  }
+}
+
+% Warning
+\newtcolorbox{warnbox}[1][]{
+  commonstyle,
+  colback=warnbg,
+  colframe=warnframe,
+  title={#1},
+  overlay unbroken and first={
+    \node[anchor=north east, text=warnframe, font=\huge\bfseries, inner sep=3mm]
+      at (frame.north east) {!};
+  }
+}
+
+% Tip / Praxis
+\newtcolorbox{tipbox}[1][]{
+  commonstyle,
+  colback=tipbg,
+  colframe=tipframe,
+  title={#1},
+  overlay unbroken and first={
+    \node[anchor=north east, text=tipframe, font=\huge\bfseries, inner sep=3mm]
+      at (frame.north east) {$\checkmark$};
+  }
+}
+
+% Command Box (Terminal/Commands als Fließtext, ohne listings)
+\newtcolorbox{cmdbox}[1][]{
+  commonstyle,
+  colback=codebg,
+  colframe=codeframe,
+  title={#1}
+}
+
+% -----------------------------------------------------------------------------
+% Tabellen (Style-Profil)
+% -----------------------------------------------------------------------------
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{6pt}
+
+% -----------------------------------------------------------------------------
+% Captions (Style-Profil)
+% -----------------------------------------------------------------------------
+\usepackage{caption}
+\captionsetup{
+  font=small,
+  labelfont=bf,
+  textfont=small
+}
+
+% -----------------------------------------------------------------------------
+% Referenzen & PDF
+% -----------------------------------------------------------------------------
+\usepackage{csquotes}
+\usepackage{hyperref}
+\usepackage{bookmark}
+\usepackage[nameinlink,noabbrev]{cleveref}
+
+\newif\ifprint
+\printfalse % \printtrue für Druck-PDF ohne farbige Links
+
+\ifprint
+  \hypersetup{
+    hidelinks,
+    pdftitle={ROS 2 \& AMR Dokumentation},
+    pdfsubject={AMR-Roadmap / Nachschlagewerk},
+    pdfcreator={XeLaTeX}
+  }
+\else
+  \hypersetup{
+    colorlinks=true,
+    linkcolor=arduinoblue,
+    urlcolor=arduinoblue,
+    citecolor=arduinoblue,
+    pdftitle={ROS 2 \& AMR Dokumentation},
+    pdfsubject={AMR-Roadmap / Nachschlagewerk},
+    pdfcreator={XeLaTeX},
+    bookmarksnumbered=true
+  }
+\fi
+
+% -----------------------------------------------------------------------------
+% Kopf- und Fußzeilen
+% -----------------------------------------------------------------------------
+\usepackage{fancyhdr}
+\setlength{\headheight}{15pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\sffamily\nouppercase{\leftmark}}
+\fancyhead[R]{\sffamily AMR Nachschlagewerk}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% Plain-Pagestyle (ToC etc.) ruhiger: nur Seitenzahl
+\fancypagestyle{plain}{
+  \fancyhf{}
+  \fancyfoot[C]{\thepage}
+  \renewcommand{\headrulewidth}{0pt}
+}
+
+% -----------------------------------------------------------------------------
+% Projekt-Metadaten (Style-Profil)
+% -----------------------------------------------------------------------------
+\newcommand{\DocTitle}{Autonomous Mobile Robot}
+\newcommand{\DocSubtitle}{AMR-Roadmap}
+\newcommand{\DocTagline}{„Vom Lötkolben zum SLAM“}
+\newcommand{\DocScope}{Interdisziplinäres Projekt (Mechanik, Elektronik, Software)}
+\newcommand{\DocStack}{ESP32-S3 \textbullet\ FreeRTOS \textbullet\ micro-ROS \textbullet\ ROS~2 Humble \textbullet\ Nav2}
+\newcommand{\DocVersion}{v3.0.0}
+
+% -----------------------------------------------------------------------------
+% Text-Macros (konsequente Darstellung)
+% -----------------------------------------------------------------------------
+\newcommand{\topic}[1]{\texttt{#1}}
+\newcommand{\filep}[1]{\texttt{#1}}
+\newcommand{\pin}[1]{\texttt{#1}}
+
+% =============================================================================
+% DOKUMENT START
+% =============================================================================
+\begin{document}
+
+% --------------------------------------------------------------------
+% Titel-Seite (A4, geometry: 2.5 cm Ränder) – angepasst
+% --------------------------------------------------------------------
+
+% (einmalig im Preamble, falls noch nicht vorhanden)
+\newlength{\CoverW}
+\setlength{\CoverW}{0.95\textwidth}
+
+\begin{titlepage}
+  \thispagestyle{empty}
+  \centering
+  \vspace*{-1.2cm} % <- zieht den Titelblock nach oben (bei 2.5cm top-margin)
+
+  {\sffamily\bfseries\Huge Autonomous Mobile Robot\par}
+  \vspace{0.18cm}
+  {\sffamily\Large AMR-Roadmap\par}
+
+  \vspace{0.40cm}
+  {\sffamily\itshape „Vom Lötkolben zum SLAM“\par}
+  \vspace{0.18cm}
+  {\small Interdisziplinäres Projekt (Mechanik \textbullet\ Elektronik \textbullet\ Software)\par}
+
+  \vspace{0.45cm}
+
+  \begin{tcolorbox}[
+    colback=white,
+    colframe=arduinoblue!65,
+    arc=0mm,
+    boxrule=0.6pt,
+    width=\CoverW,
+    boxsep=2pt,
+    halign=center
+  ]
+    \IfFileExists{images/cover.jpg}{
+      \includegraphics[
+        width=\linewidth,
+        height=9.8cm,
+        keepaspectratio,
+        % optional: Rover größer, weniger Hintergrund:
+        trim=0 120 0 60,clip
+      ]{images/cover.jpg}
+    }{
+      \IfFileExists{images/cover.png}{
+        \includegraphics[width=\linewidth,height=9.8cm,keepaspectratio]{images/cover.png}
+      }{
+        \sffamily\Large cover.{jpg,png} fehlt
+      }
+    }
+  \end{tcolorbox}
+
+  \vspace{0.45cm}
+
+  \begin{tcolorbox}[
+    colback=white,
+    colframe=arduinoblue!65,
+    arc=0mm,
+    boxrule=0.6pt,
+    width=\CoverW,
+    boxsep=4pt
+  ]
+    \centering\sffamily
+    \textbf{Technologie-Stack}\par
+    \vspace{0.35em}
+    {\small \DocStack\par}
+  \end{tcolorbox}
+
+  \vfill
+
+  {\footnotesize\sffamily
+  \begin{tabular*}{\CoverW}{@{\extracolsep{\fill}} l r}
+    Stand: \today & Jan Unger\\
+    AMR-Projekt & Version: \DocVersion\\
+  \end{tabular*}\par
+  }
+\end{titlepage}
+
+
+
+
+\pagenumbering{roman}
+
+% Inhaltsverzeichnis: bewusst ohne Fancy-Header (ruhiger Master-Look)
+\begingroup
+  \pagestyle{plain}
+  \tableofcontents
+\endgroup
+\clearpage
+
+\pagenumbering{arabic}
+
+% =============================================================================
+% Inhalte einbinden (content/*.tex)
+% =============================================================================
+
+\input{content/01-microros-esp32s3.tex}
+\input{content/01-phase1-befehle.tex}
+\input{content/02-ros2-humble-docker-pi5.tex}
+\input{content/03-rplidar-a1.tex}
+\input{content/03-phase3-befehle.tex}
+% Phase 4 - 6 ergänzen
+%
+\input{content/amr-implementierungsplan.tex}
+\input{content/entwicklerdokumentation.tex}
+\input{content/systemdokumentation.tex}
+%
+\input{content/git-workflow.tex}
+\input{content/industriestandards-amr.tex}
+\input{content/kosten.tex}
+\input{content/todo-liste.tex}
+
+\end{document}

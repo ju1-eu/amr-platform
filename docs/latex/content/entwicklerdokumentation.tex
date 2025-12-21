@@ -1,0 +1,408 @@
+% =====================================================================
+% Entwicklerdokumentation – AMR Low-Level Controller
+% Fragment ohne Präambel (setzt Styles/Makros aus main.tex voraus)
+% Version: 3.2.0 | Stand: 20.12.2025 | Status: Phase 1 abgeschlossen
+% =====================================================================
+
+\section{Entwicklerdokumentation: AMR Low-Level Controller}
+\label{sec:devdoc-amr-llc}
+
+\begin{infobox}[Meta]
+\begin{itemize}
+  \item Version: \textbf{3.2.0}
+  \item Stand: \textbf{20.12.2025}
+  \item Status: \textbf{Phase 1 abgeschlossen}
+\end{itemize}
+\end{infobox}
+
+\subsection{Architektur-Design}
+
+Das System folgt einer \textbf{Hybrid-Echtzeit-Architektur}: zeitkritische Regelung und nicht-zeitkritische Kommunikation werden strikt getrennt durch Dual-Core-Nutzung des ESP32-S3.
+
+\subsubsection{Dual-Core Aufteilung (ESP32-S3)}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.92\textwidth]{images/Dual-Core-Aufteilung-ESP32-S3.png}
+  \caption{Dual-Core-Aufteilung auf dem ESP32-S3 (Hybrid-Echtzeit-Architektur): Core~0 übernimmt die zeitkritische Regel-/Odometrie-Schleife (\(\SI{100}{\hertz}\)) inklusive Encoder-ISR, Feedforward und deterministischem Failsafe. Core~1 ist für nicht-zeitkritische Kommunikation reserviert (micro-ROS Spin/Executor, periodisches Publish von Odometrie und Heartbeat). Beide Kerne tauschen Zustände über mutex-geschützte Shared-Memory-Strukturen aus. Die Anbindung an den Raspberry~Pi~5 erfolgt über USB-CDC mit \(\SI{921600}{\baud}\); dort laufen \texttt{micro-ros-agent} (\texttt{/dev/ttyACM0}) und die ROS~2-Humble-Entwicklungsumgebung in Docker-Containern.}
+  \label{fig:dualcore-esp32s3}
+\end{figure}
+
+
+\subsection{Hardware Abstraction Layer (HAL)}
+
+Die Pin-Belegung ist für vollständige Hardware-Nutzung refaktoriert. Alle Pins werden initialisiert, um Floating-States zu vermeiden.
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l l l X l @{}}
+\toprule
+\textbf{Ressource} & \textbf{Pin} & \textbf{PWM-CH} & \textbf{Core} & \textbf{Funktion} & \textbf{Status} \\
+\midrule
+Motor L-A & \pin{D0}  & CH 1 & Core 0 & PWM Vorwärts  & \(\checkmark\) Aktiv \\
+Motor L-B & \pin{D1}  & CH 0 & Core 0 & PWM Rückwärts & \(\checkmark\) Aktiv \\
+Motor R-A & \pin{D2}  & CH 3 & Core 0 & PWM Vorwärts  & \(\checkmark\) Aktiv \\
+Motor R-B & \pin{D3}  & CH 2 & Core 0 & PWM Rückwärts & \(\checkmark\) Aktiv \\
+Encoder L & \pin{D6}  & --   & Core 0 & ISR (Rising Edge) & \(\checkmark\) Aktiv \\
+Encoder R & \pin{D7}  & --   & Core 0 & ISR (Rising Edge) & \(\checkmark\) Aktiv \\
+Safety/LED & \pin{D10} & --  & Core 0 & MOSFET (Not-Aus) & \(\checkmark\) Aktiv \\
+I2C SDA & \pin{D4} & -- & Core 1 & IMU (MPU6050) & \(\square\) Reserviert \\
+I2C SCL & \pin{D5} & -- & Core 1 & IMU (MPU6050) & \(\square\) Reserviert \\
+Servo Pan & \pin{D8} & -- & Core 1 & Kamera Pan & \(\square\) Reserviert \\
+Servo Tilt & \pin{D9} & -- & Core 1 & Kamera Tilt & \(\square\) Reserviert \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{PWM-Kanäle (A\(\leftrightarrow\)B getauscht)}
+\begin{lstlisting}[style=arduino]
+// config.h
+#define PWM_CH_LEFT_A  1  // war 0
+#define PWM_CH_LEFT_B  0  // war 1
+#define PWM_CH_RIGHT_A 3  // war 2
+#define PWM_CH_RIGHT_B 2  // war 3
+\end{lstlisting}
+
+\subsection{Firmware-Logik (\texttt{main.cpp})}
+
+Die Firmware basiert auf zwei parallelen Tasks.
+
+\subsubsection{Task: \texttt{controlTask} (Core 0)}
+Dies ist das ``Rückenmark'' des Roboters.
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l X @{}}
+\toprule
+\textbf{Eigenschaft} & \textbf{Wert} \\
+\midrule
+Frequenz & \(\SI{100}{\hertz}\) (fixiert via \texttt{vTaskDelayUntil}) \\
+Priorität & \texttt{configMAX\_PRIORITIES - 1} \\
+Stack & \(\SI{4096}{\byte}\) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Ablauf (pro Tick):}
+\begin{enumerate}
+  \item Mutex Lock: Zielwerte aus Shared Memory lesen
+  \item Atomic Read: Encoderwerte lesen (Interrupts gesperrt)
+  \item Odometrie: \(x,y,\theta\) integrieren
+  \item Richtungs-Heuristik: Encoder-Vorzeichen aus Soll-Geschwindigkeit
+  \item Feedforward + PID: Stellgrößen berechnen (PID aktuell deaktiviert)
+  \item Safety: \texttt{last\_cmd\_time} prüfen \(\rightarrow\) Stop bei Timeout
+  \item Mutex Lock: Odometrie in Shared Memory schreiben
+\end{enumerate}
+
+\subsubsection{Steuerungslogik (Feedforward)}
+\begin{lstlisting}[style=arduino]
+// Inverse Kinematik: Twist → Radgeschwindigkeiten
+float set_v_l = target_v - (target_w * WHEEL_BASE / 2.0f);
+float set_v_r = target_v + (target_w * WHEEL_BASE / 2.0f);
+
+// Feedforward + PID (PID aktuell deaktiviert: Kp=Ki=Kd=0)
+float feedforward_gain = 2.0f;
+float pwm_l = feedforward_gain * set_v_l + pid_left.compute(set_v_l, v_enc_l, dt);
+float pwm_r = feedforward_gain * set_v_r + pid_right.compute(set_v_r, v_enc_r, dt);
+
+// Begrenzen auf PWM-Bereich
+pwm_l = constrain(pwm_l, -1.0f, 1.0f);
+pwm_r = constrain(pwm_r, -1.0f, 1.0f);
+
+// Hardware ansteuern
+hal_motor_write(pwm_l, pwm_r);
+\end{lstlisting}
+
+\begin{infobox}[Warum Feedforward statt PID?]
+Encoder liefern nur Single-Channel-Signale (A-only), daher keine echte Richtungserkennung. Die Richtung wird aus der Soll-Geschwindigkeit abgeleitet. Mit aktivem PID kam es zur Eskalation (Vorzeichen-Fehlinterpretation). Feedforward umgeht das Problem.
+\end{infobox}
+
+\subsubsection{Task: \texttt{loop} (Core 1)}
+Dies ist das ``Sprachzentrum''.
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l X @{}}
+\toprule
+\textbf{Eigenschaft} & \textbf{Wert} \\
+\midrule
+Frequenz & Best Effort \\
+Odom Publish & \(\SI{20}{\hertz}\) (alle \(\SI{50}{\milli\second}\)) \\
+Heartbeat & \(\SI{1}{\hertz}\) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Ablauf:}
+\begin{enumerate}
+  \item \texttt{rclc\_executor\_spin\_some}: neue \topic{/cmd\_vel} prüfen
+  \item Odom Publish: alle \(\SI{50}{\milli\second}\) aus Shared Memory lesen und senden
+  \item Heartbeat: alle \(\SI{1000}{\milli\second}\) Counter inkrementieren und senden
+  \item Shared Memory Zugriff nur via \texttt{xSemaphoreTake}
+\end{enumerate}
+
+\subsection{Schnittstellen \& Datenfluss}
+
+\subsubsection{ROS 2 Topics}
+\begin{table}[H]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\textwidth}{@{} l p{3.2cm} c c c X @{}}
+\toprule
+\textbf{Topic} & \textbf{Typ} & \textbf{Richtung} & \textbf{QoS} & \textbf{Freq.} & \textbf{Beschreibung} \\
+\midrule
+\topic{/cmd\_vel} & \texttt{geometry\_msgs/Twist} & Sub & Reliable & -- & Geschwindigkeitsbefehle \\
+\topic{/odom\_raw} & \texttt{geometry\_msgs/Pose2D} & Pub & Best Effort & \(\SI{20}{\hertz}\) & Odometrie (\(x,y,\theta\)) \\
+\topic{/esp32/heartbeat} & \texttt{std\_msgs/Int32} & Pub & Best Effort & \(\SI{1}{\hertz}\) & Lebenszeichen \\
+\topic{/esp32/led\_cmd} & \texttt{std\_msgs/Bool} & Sub & Reliable & -- & LED/MOSFET-Steuerung \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+
+\subsubsection{Nachrichtenformate (Beispiele)}
+
+\paragraph{\topic{/cmd\_vel} (Input)}
+\begin{lstlisting}[style=shell]
+linear:
+  x: 0.15    # [m/s] Vorwärts (+) / Rückwärts (-)
+angular:
+  z: 0.5     # [rad/s] Links (+) / Rechts (-)
+\end{lstlisting}
+
+\paragraph{\topic{/odom\_raw} (Output)}
+\begin{lstlisting}[style=shell]
+x: 0.899     # [m] Position X
+y: -0.329    # [m] Position Y
+theta: 6.09  # [rad] Orientierung
+\end{lstlisting}
+
+\subsubsection{Shared Memory Struktur}
+\begin{lstlisting}[style=arduino]
+struct SharedData {
+    // Input (Core 1 → Core 0)
+    float target_lin_x;          // Soll-Linear-Geschwindigkeit [m/s]
+    float target_ang_z;          // Soll-Winkel-Geschwindigkeit [rad/s]
+    bool led_cmd_active;         // LED-Status
+    unsigned long last_cmd_time; // Zeitstempel für Failsafe
+
+    // Output (Core 0 → Core 1)
+    float odom_x;                // Position X [m]
+    float odom_y;                // Position Y [m]
+    float odom_theta;            // Orientierung [rad]
+};
+\end{lstlisting}
+
+\subsection{Konfiguration (\texttt{config.h})}
+
+\subsubsection{Timing}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l X @{}}
+\toprule
+\textbf{Parameter} & \textbf{Wert} & \textbf{Beschreibung} \\
+\midrule
+\texttt{LOOP\_RATE\_HZ} & 100 & Control-Loop Frequenz \\
+\texttt{ODOM\_PUBLISH\_HZ} & 20 & Odometrie Publish Rate \\
+\texttt{FAILSAFE\_TIMEOUT\_MS} & 2000 & Heartbeat-Timeout \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{Kinematik}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l X @{}}
+\toprule
+\textbf{Parameter} & \textbf{Wert} & \textbf{Beschreibung} \\
+\midrule
+\texttt{WHEEL\_DIAMETER} & \(\SI{0.065}{\meter}\) & Raddurchmesser \\
+\texttt{WHEEL\_BASE} & \(\SI{0.178}{\meter}\) & Spurbreite \\
+\texttt{TICKS\_PER\_REV\_LEFT} & 374.3 & Encoder-Ticks pro Umdrehung \\
+\texttt{TICKS\_PER\_REV\_RIGHT} & 373.6 & Encoder-Ticks pro Umdrehung \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{Regelung}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l X @{}}
+\toprule
+\textbf{Parameter} & \textbf{Wert} & \textbf{Beschreibung} \\
+\midrule
+\texttt{PID\_KP} & 0.0 & deaktiviert \\
+\texttt{PID\_KI} & 0.0 & deaktiviert \\
+\texttt{PID\_KD} & 0.0 & deaktiviert \\
+\texttt{feedforward\_gain} & 2.0 & Direkte Ansteuerung \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{PWM}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l X @{}}
+\toprule
+\textbf{Parameter} & \textbf{Wert} & \textbf{Beschreibung} \\
+\midrule
+\texttt{MOTOR\_PWM\_FREQ} & 20000 & \(\SI{20}{\kilo\hertz}\) (unhörbar) \\
+\texttt{MOTOR\_PWM\_BITS} & 8 & 0--255 Auflösung \\
+\texttt{PWM\_DEADZONE} & 35 & Mindest-PWM \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Deployment}
+
+\subsubsection{Firmware Update (Mac)}
+\begin{lstlisting}[style=shell]
+cd ~/daten/start/IoT/AMR/amr-platform/firmware
+pio run -e seeed_xiao_esp32s3 -t upload
+\end{lstlisting}
+
+\subsubsection{Docker starten (Pi)}
+\begin{lstlisting}[style=shell]
+cd ~/amr-platform/docker
+docker compose up -d
+sleep 5
+docker compose logs microros_agent --tail 5
+\end{lstlisting}
+
+\begin{cmdbox}[Erwartung]
+\ttfamily running... \textbar\ fd: 3
+\end{cmdbox}
+
+\subsubsection{Nach ESP32 Reboot}
+\begin{lstlisting}[style=shell]
+docker compose restart microros_agent
+sleep 5
+\end{lstlisting}
+
+\subsection{Testing}
+
+\subsubsection{Verbindung prüfen}
+\begin{lstlisting}[style=shell]
+docker compose exec amr_dev bash
+source /opt/ros/humble/setup.bash
+ros2 topic list
+\end{lstlisting}
+
+\begin{cmdbox}[Erwartung]
+\ttfamily
+/cmd\_vel\\
+/esp32/heartbeat\\
+/esp32/led\_cmd\\
+/odom\_raw
+\end{cmdbox}
+
+\subsubsection{Heartbeat prüfen}
+\begin{lstlisting}[style=shell]
+ros2 topic echo /esp32/heartbeat
+\end{lstlisting}
+
+\subsubsection{Odometrie prüfen}
+\begin{lstlisting}[style=shell]
+ros2 topic echo /odom_raw --once
+\end{lstlisting}
+
+\subsubsection{Motor-Test (Räder aufbocken!)}
+\begin{warnbox}[Sicherheit]
+Motor-Tests nur mit aufgebockten Rädern (kein Bodenkontakt).
+\end{warnbox}
+
+\begin{lstlisting}[style=shell]
+ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \
+  "{linear: {x: 0.15}, angular: {z: 0.0}}" -r 10
+
+# Ctrl+C → Failsafe stoppt nach 2s
+\end{lstlisting}
+
+\subsubsection{Richtungen testen}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l X @{}}
+\toprule
+\textbf{Befehl} & \textbf{Erwartung} \\
+\midrule
+\texttt{linear.x: 0.15} & Vorwärts \\
+\texttt{linear.x: -0.15} & Rückwärts \\
+\texttt{angular.z: 0.5} & Drehen links \\
+\texttt{angular.z: -0.5} & Drehen rechts \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Troubleshooting}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} X X X @{}}
+\toprule
+\textbf{Problem} & \textbf{Ursache} & \textbf{Lösung} \\
+\midrule
+Motor reagiert nicht & Feedforward zu niedrig & \texttt{feedforward\_gain} erhöhen \\
+PID eskaliert & Encoder-Polarität invertiert & PID deaktivieren (\texttt{Kp=0}) \\
+Räder drehen falsch & PWM-Kanäle & A\(\leftrightarrow\)B tauschen \\
+Failsafe greift zu früh & Timeout zu kurz & \texttt{FAILSAFE\_TIMEOUT\_MS} erhöhen \\
+Topics fehlen & Agent nicht verbunden & \texttt{docker compose restart microros\_agent} \\
+Keine Odom-Daten & QoS Mismatch & Best Effort QoS nutzen \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Bekannte Einschränkungen}
+
+\begin{enumerate}
+  \item Open-Loop-Steuerung: PID deaktiviert, keine Geschwindigkeitsregelung
+  \item Encoder A-only: Richtung aus Soll-Geschwindigkeit abgeleitet
+  \item Odom-Rate: effektiv \(\SIrange{3}{6}{\hertz}\) durch Serial-Transport
+  \item Keine TF: \texttt{odom} \(\rightarrow\) \texttt{base\_link} extern erforderlich
+\end{enumerate}
+
+\subsection{Nächste Entwicklungsschritte}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l X l @{}}
+\toprule
+\textbf{Phase} & \textbf{Aufgabe} & \textbf{Status} \\
+\midrule
+Phase 3 & RPLidar A1 Integration & \(\square\) \\
+Phase 4 & EKF Sensor Fusion + TF & \(\square\) \\
+Phase 4 & \texttt{odom\_converter.py} Bridge Node & \(\square\) \\
+Phase 5 & SLAM (\texttt{slam\_toolbox}) & \(\square\) \\
+Phase 6 & Nav2 Navigation & \(\square\) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Changelog}
+
+\subsubsection{v3.2.0 (20.12.2025) -- Phase 1 Abschluss}
+\begin{itemize}
+  \item Motor-Richtung: PWM-Kanäle getauscht (A\(\leftrightarrow\)B)
+  \item Steuerung: Feedforward (Gain \(= 2.0\)) statt PID
+  \item PID: deaktiviert wegen Encoder-Polarität
+  \item Failsafe: Timeout auf \(2000\,\mathrm{ms}\) erhöht
+  \item Tests: alle Richtungen validiert
+\end{itemize}
+
+\subsubsection{v3.1.0 (20.12.2025)}
+\begin{itemize}
+  \item Baudrate: \(921600\,\mathrm{Bd}\)
+  \item PID: aktiviert (\(K_p = 1.0\))
+  \item Problem: PID-Eskalation
+\end{itemize}
+
+\subsubsection{v3.0.0 (14.12.2025)}
+\begin{itemize}
+  \item Architektur: Dual-Core
+  \item RTOS: FreeRTOS Tasks + Mutex
+\end{itemize}
+
+\begin{tipbox}[Hinweis]
+Diese Dokumentation ist als ``Single Source of Truth'' für die Firmware-Entwicklung gedacht.
+\end{tipbox}

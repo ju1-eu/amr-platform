@@ -1,0 +1,366 @@
+% =====================================================================
+% Git-Workflow: Mac ↔ GitHub ↔ Raspberry Pi
+% Fragment ohne Präambel (setzt Styles/Makros aus main.tex voraus)
+% Stand: 2025-12-12 | Firmware: v0.3.0-serial (Legacy-Hinweis aus Quelle)
+% =====================================================================
+
+\section{Git-Workflow: Mac \texorpdfstring{$\leftrightarrow$}{<->} GitHub \texorpdfstring{$\leftrightarrow$}{<->} Raspberry Pi}
+\label{sec:git-workflow}
+
+\begin{infobox}[Prinzip]
+\begin{itemize}
+  \item Mac = Entwicklung
+  \item GitHub = \emph{Single Source of Truth}
+  \item Raspberry Pi = Deployment/Runtime
+  \item Stand: \textbf{2025-12-12} \quad\textbar\quad Firmware: \textbf{v0.3.0-serial} (Quelle)
+\end{itemize}
+\end{infobox}
+
+\subsection{Übersicht}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.92\textwidth]{images/Git-Workflow.png}
+  \caption{Git-Workflow zwischen Mac, GitHub und Raspberry~Pi: Entwicklung und Dokumentation erfolgen auf dem Mac; Änderungen werden per \texttt{git push} nach GitHub übertragen, das als \emph{Single Source of Truth} dient. Der Raspberry~Pi zieht freigegebene Stände per \texttt{git pull} für Deployment und Runtime nach. Typische Projektpfade umfassen \texttt{firmware\_serial/}, \texttt{ros2\_ws/src/amr\_serial\_bridge/}, \texttt{docker/} und \texttt{docs/}; auf dem Pi liegt das Checkout z.\,B. unter \texttt{\textasciitilde/amr-platform/} mit separaten Laufzeit-/Container-Verzeichnissen.}
+  \label{fig:git-workflow}
+\end{figure}
+
+
+\subsection{Initiales Setup}
+
+\subsubsection{Auf dem Mac (Development)}
+
+\begin{lstlisting}[style=shell]
+cd /Users/jan/daten/start/IoT/AMR/amr-platform
+
+# 1) Identität setzen (WICHTIG!)
+git config --global user.name "Jan Unger"
+git config --global user.email "unger.robotics@gmail.com"
+
+# 2) Falls noch nicht initialisiert
+git init
+
+# 3) Remote hinzufügen (SSH bevorzugt)
+git remote add origin git@github.com:unger-robotics/amr-platform.git
+
+# 4) .gitignore erstellen (WICHTIG!)
+cat > .gitignore << 'EOF'
+# === Build-Artefakte ===
+.pio/
+.vscode/
+*.o
+*.elf
+*.bin
+*.map
+
+# === Python ===
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# === ROS 2 Build ===
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+
+# === Docker ===
+*.log
+
+# === Hailo (große Dateien!) ===
+*.hef
+hailo_models/
+
+# === macOS ===
+.DS_Store
+*.swp
+
+# === Secrets (niemals committen!) ===
+*.key
+*.pem
+secrets/
+
+# === IDE ===
+*.code-workspace
+.idea/
+EOF
+
+# 5) Ersten Commit & Upload
+git add .
+git commit -m "feat: Serial-Bridge Firmware v0.3.0"
+git branch -M main
+git push -u origin main
+\end{lstlisting}
+
+\subsubsection{Auf dem Raspberry Pi (Runtime)}
+
+\begin{lstlisting}[style=shell]
+# 1) Identität setzen (damit Hotfixes zugeordnet werden)
+git config --global user.name "Jan Unger"
+git config --global user.email "unger.robotics@gmail.com"
+
+# 2) Backup der aktuellen Konfiguration
+cp -r ~/amr-platform ~/amr_backup_$(date +%Y%m%d)
+
+# 3) Repository klonen
+cd ~
+git clone git@github.com:unger-robotics/amr-platform.git
+
+# 4) Symlinks für Kompatibilität erstellen (optional)
+ln -s ~/amr-platform ~/amr
+\end{lstlisting}
+
+\subsection{Täglicher Workflow}
+
+\subsubsection{Auf dem Mac entwickeln}
+
+\begin{lstlisting}[style=shell]
+cd /Users/jan/daten/start/IoT/AMR/amr-platform
+
+# 1) Vor der Arbeit: aktuellen Stand holen
+git pull origin main
+
+# 2) Arbeiten (Code schreiben, testen)
+# ... Änderungen ...
+
+# 3) Status prüfen
+git status
+
+# 4) Änderungen stagen
+git add firmware_serial/src/main.cpp
+# Oder alles:
+# git add .
+
+# 5) Commit mit aussagekräftiger Nachricht
+git commit -m "fix: Deadzone-Kompensation für kleine Geschwindigkeiten"
+
+# 6) Hochladen
+git push origin main
+\end{lstlisting}
+
+\subsubsection{Auf dem Pi deployen}
+
+\begin{lstlisting}[style=shell]
+cd ~/amr-platform
+
+# 1) Änderungen holen
+git pull origin main
+
+# 2) Docker neu starten
+cd docker
+docker compose down
+docker compose up -d
+
+# 3) Logs prüfen
+docker compose logs -f serial_bridge
+\end{lstlisting}
+
+\subsection{Commit-Konventionen}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l X X @{}}
+\toprule
+\textbf{Präfix} & \textbf{Verwendung} & \textbf{Beispiel} \\
+\midrule
+\texttt{feat:} & Neue Funktion & \texttt{feat: Encoder-ISR für Phase 2} \\
+\texttt{fix:} & Bugfix & \texttt{fix: Failsafe-Timeout auf 500ms} \\
+\texttt{docs:} & Dokumentation & \texttt{docs: README aktualisiert} \\
+\texttt{refactor:} & Code-Umbau & \texttt{refactor: HAL in separate Datei} \\
+\texttt{test:} & Tests & \texttt{test: Motor-Kalibrierung Sketch} \\
+\texttt{chore:} & Build/Tooling & \texttt{chore: PlatformIO auf 6.1.15} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{cmdbox}[Beispiele für gute Commits]
+\begin{lstlisting}[style=shell]
+git commit -m "feat(firmware): Serial-Bridge Protokoll V:x,W:y"
+git commit -m "fix(docker): serial_bridge Container Device-Mapping"
+git commit -m "docs: Phase 1 abgeschlossen"
+\end{lstlisting}
+\end{cmdbox}
+
+\subsection{Branching-Strategie (optional)}
+
+\begin{lstlisting}[style=shell]
+# Neuen Feature-Branch erstellen
+git checkout -b feature/encoder-odometry
+
+# Arbeiten, committen...
+git add .
+git commit -m "feat: Odometrie-Publisher implementiert"
+
+# Branch hochladen
+git push -u origin feature/encoder-odometry
+
+# Zurück zu main und mergen
+git checkout main
+git merge feature/encoder-odometry
+git push origin main
+
+# Branch löschen (lokal + remote)
+git branch -d feature/encoder-odometry
+git push origin --delete feature/encoder-odometry
+\end{lstlisting}
+
+\subsection{Synchronisation Mac \texorpdfstring{$\leftrightarrow$}{<->} Pi}
+
+\subsubsection{Schneller Weg: Nur Firmware (ohne Git)}
+\begin{lstlisting}[style=shell]
+# Von Mac aus (rsync über SSH)
+rsync -avz --progress \
+    /Users/jan/daten/start/IoT/AMR/amr-platform/firmware_serial/ \
+    pi@rover:~/amr-platform/firmware_serial/
+\end{lstlisting}
+
+\subsubsection{Empfohlener Weg: Über GitHub}
+\begin{cmdbox}[Flow]
+\begin{lstlisting}[style=shell]
+Mac: git push  →  GitHub (unger-robotics)  →  Pi: git pull
+\end{lstlisting}
+\end{cmdbox}
+
+\subsubsection{Ein-Zeilen-Deploy (Mac \texorpdfstring{$\rightarrow$}{->} Pi)}
+\begin{lstlisting}[style=shell]
+git add . && git commit -m "fix: Beschreibung" && git push && \
+ssh pi@rover "cd ~/amr-platform && git pull && cd docker && docker compose up -d"
+\end{lstlisting}
+
+\subsection{Häufige Szenarien}
+
+\subsubsection{``Ich habe auf dem Pi etwas getestet und will es behalten''}
+\begin{lstlisting}[style=shell]
+# Auf dem Pi
+cd ~/amr-platform
+git add docker/docker-compose.yml
+git commit -m "tune: Serial-Bridge Timeout angepasst"
+git push origin main
+
+# Auf dem Mac (später)
+git pull origin main
+\end{lstlisting}
+
+\subsubsection{``Ich habe lokale Änderungen, will aber den neuesten Stand''}
+
+\paragraph{Option A: Änderungen temporär speichern (Stash)}
+\begin{lstlisting}[style=shell]
+git stash
+git pull origin main
+git stash pop
+\end{lstlisting}
+
+\paragraph{Option B: Änderungen verwerfen (Hard Reset -- Vorsicht!)}
+\begin{lstlisting}[style=shell]
+git checkout -- .
+git pull origin main
+\end{lstlisting}
+
+\subsubsection{``Merge-Konflikt!''}
+\begin{lstlisting}[style=shell]
+# Git zeigt an: CONFLICT in firmware_serial/src/main.cpp
+
+# 1) Datei öffnen, Konflikte manuell lösen
+#    Suche nach: <<<<<<< HEAD ... ======= ... >>>>>>>
+
+# 2) Gelöste Datei stagen
+git add firmware_serial/src/main.cpp
+
+# 3) Merge abschließen
+git commit -m "merge: Konflikt in main.cpp gelöst"
+\end{lstlisting}
+
+\subsection{Nützliche Aliase (optional)}
+
+\begin{lstlisting}[style=shell]
+# In ~/.gitconfig hinzufügen:
+[alias]
+    st = status
+    co = checkout
+    br = branch
+    ci = commit
+    lg = log --oneline --graph --decorate --all
+    sync = !git pull && git push
+\end{lstlisting}
+
+\subsection{Backup-Strategie}
+
+\subsubsection{Lokales Backup (Mac)}
+\begin{lstlisting}[style=shell]
+# Bare-Repository als Backup
+git clone --bare . ~/Backups/amr-platform.git
+\end{lstlisting}
+
+\subsubsection{Automatisches Backup (Pi)}
+\begin{lstlisting}[style=shell]
+# Cron-Job für tägliches Backup
+crontab -e
+
+# Eintrag hinzufügen:
+0 3 * * * cd ~/amr-platform && git add -A && git commit -m "auto: Daily backup" && git push origin main 2>/dev/null || true
+\end{lstlisting}
+
+\subsection{Projekt-Struktur}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.4\textwidth]{images/projekt-struktur.png}
+  \caption{Projektstruktur des Repositories \texttt{amr-platform}: \texttt{firmware/} enthält die ESP32-S3-Firmware (PlatformIO mit \texttt{src/main.cpp} und \texttt{include/config.h}), \texttt{ros2\_ws/src/} den ROS~2-Workspace mit Paketen für Bridge/Bringup/Description sowie \texttt{sllidar\_ros2}. Die Laufzeitumgebung ist in \texttt{docker/} (Dockerfile, Compose, Entrypoint) gekapselt. Automatisierung und Betrieb liegen in \texttt{scripts/} (Deployment, micro-ROS-Agent-Service, Dokumentations-Converter). \texttt{docs/} bündelt Projektdokumentation; \texttt{README.md}, \texttt{LICENSE}, \texttt{start.html} und \texttt{main-design.css} bilden Einstieg und Styling der Doku.}
+  \label{fig:projektstruktur}
+\end{figure}
+
+
+\subsection{Checkliste: Git richtig nutzen}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} X X @{}}
+\toprule
+\textbf{Regel} & \textbf{Warum} \\
+\midrule
+Vor der Arbeit: \texttt{git pull} & Konflikte vermeiden \\
+Kleine Commits & Leichter nachvollziehbar \\
+Aussagekräftige Nachrichten & Hilft beim Debuggen \\
+Secrets nie committen & Sicherheit (keine Passwörter) \\
+Identität prüfen & \texttt{git config user.email} \\
+\texttt{firmware\_serial/} für ESP32 & Nicht \texttt{firmware/} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Zusammenfassung: Der goldene Pfad}
+
+\begin{lstlisting}[style=shell]
+# 1) Updaten
+git pull origin main
+
+# 2) Arbeiten
+# ... code, test, debug ...
+
+# 3) Committen
+git add .
+git commit -m "feat: Beschreibung der Änderung"
+
+# 4) Synchronisieren
+git push origin main
+
+# 5) Auf Pi deployen
+ssh pi@rover "cd ~/amr-platform && git pull && cd docker && docker compose up -d"
+\end{lstlisting}
+
+\subsection{Quick Reference Card}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l X X @{}}
+\toprule
+\textbf{Aktion} & \textbf{Mac} & \textbf{Pi} \\
+\midrule
+ESP32 flashen & \texttt{cd firmware\_serial \&\& pio run -t upload} & -- \\
+Serial Monitor & \texttt{pio device monitor} & \texttt{screen /dev/ttyACM0 115200} \\
+Docker starten & -- & \texttt{docker compose up -d} \\
+Logs anzeigen & -- & \texttt{docker compose logs -f serial\_bridge} \\
+Git sync & \texttt{git pull \&\& git push} & \texttt{git pull} \\
+Teleop testen & -- & \texttt{docker exec -it amr\_perception ros2 run teleop\_twist\_keyboard teleop\_twist\_keyboard} \\
+\bottomrule
+\end{tabularx}
+\end{table}

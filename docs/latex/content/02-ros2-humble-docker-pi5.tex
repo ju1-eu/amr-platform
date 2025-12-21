@@ -1,0 +1,253 @@
+% =====================================================================
+% Phase 2 – ROS 2 Humble auf Pi 5 via Docker + micro-ROS Agent
+% Fragment ohne Präambel (setzt Styles/Makros aus main.tex voraus)
+% =====================================================================
+
+\section{Phase 2: ROS 2 Humble auf Raspberry Pi 5 (Docker) + micro-ROS Agent}
+\label{sec:phase2-ros2-humble-docker-pi5}
+
+\begin{infobox}[Status \& Version]
+\begin{itemize}
+  \item Status: \textbf{completed}
+  \item Updated: \textbf{2025-12-20}
+  \item Version: \textbf{2.0}
+  \item Depends on: \textbf{Phase 1 (micro-ROS auf ESP32-S3)}
+  \item Next: \textbf{Phase 3 (RPLidar A1)}
+\end{itemize}
+\end{infobox}
+
+\subsection{Zielbild \& Definition of Done}
+
+\subsubsection{Zielbild}
+\begin{itemize}
+  \item Raspberry Pi 5 (Raspberry Pi OS \textbf{64-bit}) betreibt \textbf{ROS 2 Humble} in \textbf{Docker}.
+  \item micro-ROS Agent läuft reproduzierbar (Container) und verbindet sich über \textbf{USB-Serial} zum ESP32-S3.
+  \item Host-ROS kann:
+  \begin{itemize}
+    \item \topic{/cmd\_vel} publizieren \(\rightarrow\) Motor reagiert
+    \item \topic{/odom\_raw} empfangen \(\rightarrow\) Werte plausibel
+    \item \topic{/esp32/heartbeat} empfangen \(\rightarrow\) Agent-Verbindung verifiziert
+  \end{itemize}
+\end{itemize}
+
+\subsubsection{DoD (verifiziert 2025-12-20)}
+\begin{itemize}[label=\(\checkmark\)]
+  \item \texttt{docker compose up} startet Container ohne manuelle Nacharbeit.
+  \item Agent verbindet stabil über \filep{/dev/ttyACM0} mit $921600\,\mathrm{Bd}$.
+  \item ROS Smoke-Tests sind grün:
+  \begin{itemize}[label=\(\checkmark\)]
+    \item \texttt{ros2 topic list} zeigt \topic{/cmd\_vel}, \topic{/odom\_raw}, \topic{/esp32/heartbeat}, \topic{/esp32/led\_cmd}
+    \item \texttt{ros2 topic pub /cmd\_vel ...} bewegt den Rover
+    \item \texttt{ros2 topic echo /odom\_raw} liefert kontinuierliche Werte
+  \end{itemize}
+  \item Failsafe stoppt Motoren nach \SI{2}{\second} Timeout.
+\end{itemize}
+
+\subsection{Docker-Images (Regel)}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l X @{}}
+\toprule
+\textbf{Service / Container} & \textbf{Image} & \textbf{Funktion} \\
+\midrule
+\texttt{microros\_agent} / \texttt{amr\_agent} & \texttt{microros/micro-ros-agent:humble} & Serial Agent \\
+\texttt{amr\_dev} / \texttt{amr\_base} & Custom (ROS 2 Humble) & Workspace \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Warum Humble statt Jazzy:}
+\begin{itemize}
+  \item micro-ROS Agent für Humble stabiler auf \texttt{arm64}
+  \item Kompatibilität mit bestehenden Packages (Nav2, \texttt{slam\_toolbox})
+\end{itemize}
+
+\subsection{Host-Voraussetzungen}
+
+\subsubsection{System}
+\begin{itemize}
+  \item Raspberry Pi 5, Raspberry Pi OS \textbf{64-bit} (Bookworm)
+  \item Docker Engine + Docker Compose Plugin
+\end{itemize}
+
+\subsubsection{USB-Serial prüfen}
+\begin{lstlisting}[style=shell]
+ls -l /dev/ttyACM*
+# Erwartung: /dev/ttyACM0 (ESP32-S3)
+
+ls -l /dev/ttyUSB*
+# Erwartung: /dev/ttyUSB0 (RPLidar A1)
+\end{lstlisting}
+
+\subsection{Repo-Struktur}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.4\textwidth]{images/projekt-struktur.png}
+  \caption{Projektstruktur des Repositories \texttt{amr-platform}: \texttt{firmware/} enthält die ESP32-S3-Firmware (PlatformIO mit \texttt{src/main.cpp} und \texttt{include/config.h}), \texttt{ros2\_ws/src/} den ROS~2-Workspace mit Paketen für Bridge/Bringup/Description sowie \texttt{sllidar\_ros2}. Die Laufzeitumgebung ist in \texttt{docker/} (Dockerfile, Compose, Entrypoint) gekapselt. Automatisierung und Betrieb liegen in \texttt{scripts/} (Deployment, micro-ROS-Agent-Service, Dokumentations-Converter). \texttt{docs/} bündelt Projektdokumentation; \texttt{README.md}, \texttt{LICENSE}, \texttt{start.html} und \texttt{main-design.css} bilden Einstieg und Styling der Doku.}
+  \label{fig:projektstruktur}
+\end{figure}
+
+
+\subsection{Docker Compose}
+
+\subsubsection{docker-compose.yml}
+\begin{lstlisting}[style=shell]
+services:
+  microros_agent:
+    image: microros/micro-ros-agent:humble
+    container_name: amr_agent
+    network_mode: host
+    privileged: true
+    restart: always
+    command: serial --dev /dev/ttyACM0 -b 921600
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0
+
+  amr_dev:
+    build: .
+    container_name: amr_base
+    network_mode: host
+    privileged: true
+    volumes:
+      - ../ros2_ws:/root/ros2_ws
+    command: tail -f /dev/null
+\end{lstlisting}
+
+\subsubsection{Dockerfile}
+\begin{lstlisting}[style=shell]
+FROM ros:humble-ros-base
+
+RUN apt-get update && apt-get install -y \
+    python3-colcon-common-extensions \
+    ros-humble-tf2-tools \
+    ros-humble-xacro \
+    ros-humble-rviz2 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /root/ros2_ws
+\end{lstlisting}
+
+\subsection{Befehle}
+
+\subsubsection{Nach Pi Reboot}
+\begin{lstlisting}[style=shell]
+cd ~/amr-platform/docker
+docker compose up -d
+sleep 5
+docker compose logs microros_agent --tail 5
+\end{lstlisting}
+
+\begin{cmdbox}[Erwartung]
+\ttfamily running... \textbar\ fd: 3
+\end{cmdbox}
+
+\subsubsection{Nach ESP32 Reboot}
+\begin{lstlisting}[style=shell]
+docker compose restart microros_agent
+sleep 5
+docker compose logs microros_agent --tail 5
+\end{lstlisting}
+
+\subsubsection{In Container gehen}
+\begin{lstlisting}[style=shell]
+docker compose exec amr_dev bash
+source /opt/ros/humble/setup.bash
+\end{lstlisting}
+
+\subsection{Smoke-Tests}
+
+\subsubsection{Topics prüfen}
+\begin{lstlisting}[style=shell]
+ros2 topic list
+\end{lstlisting}
+
+\begin{cmdbox}[Erwartung]
+\ttfamily
+/cmd\_vel\\
+/esp32/heartbeat\\
+/esp32/led\_cmd\\
+/odom\_raw\\
+/parameter\_events\\
+/rosout
+\end{cmdbox}
+
+\subsubsection{Heartbeat}
+\begin{lstlisting}[style=shell]
+ros2 topic echo /esp32/heartbeat
+\end{lstlisting}
+
+\begin{tipbox}[Erwartung]
+Counter steigt ca. $\SI{1}{\hertz}$.
+\end{tipbox}
+
+\subsubsection{Odometrie}
+\begin{lstlisting}[style=shell]
+ros2 topic echo /odom_raw --once
+\end{lstlisting}
+
+\begin{tipbox}[Erwartung]
+Ausgabe enthält plausible \texttt{x}, \texttt{y}, \texttt{theta}.
+\end{tipbox}
+
+\subsubsection{Motor-Test (Räder aufbocken!)}
+\begin{warnbox}[Sicherheit]
+Motor-Tests nur mit aufgebockten Rädern (kein Bodenkontakt).
+\end{warnbox}
+
+\begin{lstlisting}[style=shell]
+# Vorwärts
+ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \
+  "{linear: {x: 0.15}, angular: {z: 0.0}}" -r 10
+
+# Ctrl+C -> Failsafe stoppt nach 2s
+\end{lstlisting}
+
+\subsection{Troubleshooting}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} X X X @{}}
+\toprule
+\textbf{Problem} & \textbf{Ursache} & \textbf{Lösung} \\
+\midrule
+Agent sieht ESP32 nicht & Device-Pfad falsch & \texttt{ls /dev/ttyACM*} prüfen \\
+Topics fehlen & Agent nicht verbunden & \texttt{docker compose restart microros\_agent} \\
+ROS sieht keine Topics & Domain-ID Mismatch & \texttt{network\_mode: host} nutzen \\
+Motor reagiert nicht & Failsafe greift & Timeout prüfen (\SI{2000}{\milli\second}) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Verifizierte Konfiguration}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l @{}}
+\toprule
+\textbf{Parameter} & \textbf{Wert} \\
+\midrule
+ROS-Version & Humble \\
+Agent-Image & \texttt{microros/micro-ros-agent:humble} \\
+Baudrate & $921600\,\mathrm{Bd}$ \\
+Device & \filep{/dev/ttyACM0} \\
+Services/Container & \texttt{microros\_agent} (\texttt{amr\_agent}), \texttt{amr\_dev} (\texttt{amr\_base}) \\
+Network & host \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Changelog}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l X @{}}
+\toprule
+\textbf{Version} & \textbf{Datum} & \textbf{Änderungen} \\
+\midrule
+v2.0 & 2025-12-20 & Humble statt Jazzy, $921600\,\mathrm{Bd}$, Container-Namen aktualisiert, Status: abgeschlossen \\
+v1.0 & 2025-12-19 & Initiale Jazzy-Version (überholt) \\
+\bottomrule
+\end{tabularx}
+\end{table}

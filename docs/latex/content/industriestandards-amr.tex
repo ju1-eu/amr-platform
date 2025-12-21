@@ -1,0 +1,109 @@
+% =============================================================================
+% Industriestandards für AMR-Entwicklung (ROS 2 / TF / Safety / Code-Qualität)
+% Fragment ohne Präambel (setzt Styles/Makros aus main.tex voraus)
+% =============================================================================
+
+\section{Industriestandards für AMR-Entwicklung}
+\label{sec:industriestandards-amr}
+
+\begin{infobox}[Warum das wichtig ist]
+Für ein AMR-System (Raspberry Pi 5 + ESP32 + ROS 2) sind saubere Standards nicht ``nice to have'': SLAM (\texttt{slam\_toolbox}) und Navigation (Nav2) hängen direkt an korrekten Einheiten, Frames und Safety-Regeln.
+\end{infobox}
+
+\subsection{ROS-Standards: REPs (ROS Enhancement Proposals)}
+
+\subsubsection{REP-103: Einheiten \& Koordinaten}
+\textbf{Regel:} In ROS wird konsistent in SI gerechnet und das Koordinatensystem ist festgelegt.
+\begin{itemize}
+  \item \textbf{Einheiten:} Strecke in \(\mathrm{m}\), Winkel in \(\mathrm{rad}\), Zeit in \(\mathrm{s}\)
+  \item \textbf{Achsen:} \(x\) vorwärts, \(y\) links, \(z\) oben
+  \item \textbf{Rotation:} Rechte-Hand-Regel, gegen Uhrzeigersinn ist positiv
+\end{itemize}
+
+\textbf{Beispiel:} Radstand/Spurbreite wird in der Firmware als
+\[
+WHEEL\_BASE = 0.178\,\mathrm{m}
+\]
+und nicht als \(178\) (mm) codiert.
+
+\textbf{Anwendung im Projekt:}
+\begin{itemize}
+  \item Encoder-Ticks in \(\mathrm{m}\) umrechnen, bevor Odometrie publiziert wird.
+  \item \topic{/cmd\_vel} immer in \(\mathrm{m/s}\) und \(\mathrm{rad/s}\) interpretieren.
+\end{itemize}
+
+\subsubsection{REP-105: Koordinaten-Frames (TF-Tree)}
+\textbf{Regel:} Navigation braucht einen konsistenten TF-Baum.
+
+\begin{cmdbox}[Minimaler TF-Tree für Nav2/SLAM]
+\begin{lstlisting}[style=shell]
+map  ->  odom  ->  base_link  ->  laser_frame
+\end{lstlisting}
+\end{cmdbox}
+
+\textbf{Zuordnung im System:}
+\begin{itemize}
+  \item ESP32: publiziert \texttt{odom -> base\_link} (Odometrie driftet)
+  \item SLAM/Localization auf Pi: publiziert \texttt{map -> odom} (globale Karte)
+  \item Robot-Description/Static TF: \texttt{base\_link -> laser\_frame} (Montage)
+\end{itemize}
+
+\subsection{Sicherheitsstandard (Safety)}
+
+\subsubsection{Heartbeat / Dead Man's Switch}
+\textbf{Regel:} Wenn die Master-Seite (Pi/ROS) ausfällt, müssen die Motoren innerhalb kurzer Zeit stoppen.
+
+\begin{itemize}
+  \item Heartbeat-Intervall: typisch \(\approx 100\,\mathrm{ms}\)
+  \item Timeout: \(> 500\,\mathrm{ms}\) ohne gültige Nachricht \(\Rightarrow\) \textbf{Motor Stop} (PWM \(=0\))
+\end{itemize}
+
+\textbf{Anwendung im Projekt:}
+\begin{itemize}
+  \item Failsafe direkt in der ESP32-Firmware implementieren (Hard Real-Time).
+  \item Timeout-Wert bewusst wählen (z.\,B. \(500\,\mathrm{ms}\) bis \(2000\,\mathrm{ms}\), je nach Kommunikationspfad).
+\end{itemize}
+
+\subsection{Architektur-Standard: Hybrid Master--Slave}
+
+\textbf{Regel:} Echtzeit-Aufgaben gehören auf den ESP32, ``Denken'' auf den Pi.
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l X X @{}}
+\toprule
+\textbf{Teil} & \textbf{Rolle} & \textbf{Beispiele} \\
+\midrule
+ESP32 (Hard RT) & Physiknah, zeitkritisch, sicherheitsrelevant & PWM, Encoder-ISR, Not-Aus/Failsafe \\
+Pi 5 (Soft RT) & Rechenlastig, tolerant gegen kurze Lags & SLAM, Nav2, Vision, Planung \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Code-Qualität (Best Practices)}
+
+\subsubsection{Non-Blocking Code}
+\textbf{Regel:} Keine blockierenden Wartezeiten in Kommunikationspfaden.
+
+\begin{itemize}
+  \item kein \texttt{delay()} im Control-/Comm-Loop
+  \item stattdessen Timer über \texttt{millis()} oder FreeRTOS Tasks (\texttt{vTaskDelayUntil})
+\end{itemize}
+
+\subsubsection{Topic Naming (ROS-Konvention)}
+\begin{itemize}
+  \item \topic{/cmd\_vel} (Steuerung)
+  \item \topic{/odom} bzw. \topic{/odom\_raw} (Odometrie)
+  \item \topic{/scan} (LiDAR)
+  \item \topic{/diagnostics} (Status/Fehler)
+\end{itemize}
+
+\subsection{Projekt-Checkliste (minimal)}
+
+\begin{itemize}[label=\(\square\)]
+  \item SI-Einheiten überall (m, rad, s)
+  \item TF-Baum: \texttt{map->odom->base\_link->laser\_frame}
+  \item Failsafe: Timeout \(\le 500\,\mathrm{ms}\) (oder begründet größer)
+  \item Keine blockierenden Delays in Echtzeit-/Kommunikationspfaden
+  \item Topic-Namen nach ROS-Konvention
+\end{itemize}

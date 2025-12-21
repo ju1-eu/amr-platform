@@ -1,0 +1,261 @@
+% =====================================================================
+% Phase 3 – RPLidar A1 Integration + /scan
+% Fragment ohne Präambel (setzt Styles/Makros aus main.tex voraus)
+% =====================================================================
+
+\section{Phase 3: RPLidar A1 Integration (+ \topic{/scan})}
+\label{sec:phase3-rplidar-a1}
+
+\begin{infobox}[Status \& Version]
+\begin{itemize}
+  \item Status: \textbf{completed}
+  \item Updated: \textbf{2025-12-20}
+  \item Version: \textbf{3.0}
+  \item Depends on: Phase 1 (micro-ROS ESP32-S3), Phase 2 (Docker ROS 2 Humble)
+  \item Next: Phase 4 (URDF + TF + EKF)
+\end{itemize}
+\end{infobox}
+
+\subsection{Zielbild \& Definition of Done}
+
+\subsubsection{Zielbild}
+\begin{itemize}
+  \item RPLidar A1 läuft am Raspberry Pi 5 (Docker/ROS 2 Humble) als Laser-Treiber.
+  \item Topic \topic{/scan} (\texttt{sensor\_msgs/msg/LaserScan}) ist stabil und liefert plausible Werte.
+  \item \texttt{frame\_id} ist \texttt{laser} (TF-Anbindung an \texttt{base\_link} folgt in Phase 4).
+\end{itemize}
+
+\subsubsection{DoD (verifiziert 2025-12-20)}
+\begin{itemize}[label=\(\checkmark\)]
+  \item \texttt{ros2 topic hz /scan} zeigt stabile Frequenz \(\approx \SI{7.6}{\hertz}\)
+  \item \texttt{ros2 topic echo /scan --once} liefert plausible Werte
+  \item \texttt{frame\_id}: \texttt{laser}
+  \item Scan-Range: \(-\pi\) bis \(+\pi\), \(\SIrange{0.05}{12.0}{\meter}\)
+\end{itemize}
+
+\subsection{Hardware-Info (verifiziert)}
+
+\subsubsection{Sensor}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l X @{}}
+\toprule
+\textbf{Parameter} & \textbf{Wert} \\
+\midrule
+Modell & RPLidar A1 \\
+S/N & 74A5FA89C7E19EC8BCE499F0FF725670 \\
+Firmware & 1.29 \\
+Hardware Rev & 7 \\
+Scan Mode & Sensitivity \\
+Sample Rate & \(\SI{8}{\kilo\hertz}\) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{Gemessene Werte}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l X @{}}
+\toprule
+\textbf{Parameter} & \textbf{Wert} \\
+\midrule
+Frequenz & \(\approx \SI{7.6}{\hertz}\) \\
+\texttt{range\_min} & \(\SI{0.05}{\meter}\) \\
+\texttt{range\_max} & \(\SI{12.0}{\meter}\) \\
+\texttt{angle\_min} & \(-3.14\,\mathrm{rad}\) \\
+\texttt{angle\_max} & \(+3.14\,\mathrm{rad}\) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{Anschluss}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l X @{}}
+\toprule
+\textbf{Device} & \textbf{Port} & \textbf{Hinweis} \\
+\midrule
+RPLidar A1 & \filep{/dev/ttyUSB0} & USB-Adapter: \texttt{cp210x} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Docker-Integration}
+
+\begin{warnbox}[Wichtig]
+Kein separater \texttt{rplidar}-Container. Das erzeugt Port-Konflikte. RPLidar wird im \texttt{amr\_dev}-Container gestartet.
+\end{warnbox}
+
+\subsubsection{docker-compose.yml (relevanter Auszug)}
+\begin{lstlisting}[style=shell]
+services:
+  microros_agent:
+    image: microros/micro-ros-agent:humble
+    container_name: amr_agent
+    network_mode: host
+    privileged: true
+    restart: always
+    command: serial --dev /dev/ttyACM0 -b 921600
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0
+
+  amr_dev:
+    build: .
+    container_name: amr_base
+    network_mode: host
+    privileged: true
+    stdin_open: true
+    tty: true
+    volumes:
+      - ../ros2_ws:/root/ros2_ws
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
+    command: tail -f /dev/null
+\end{lstlisting}
+
+\subsection{Installation}
+
+\subsubsection{Repository klonen (im Container)}
+\begin{lstlisting}[style=shell]
+cd ~/amr-platform/docker
+docker compose exec amr_dev bash
+
+cd /root/ros2_ws/src
+git clone https://github.com/Slamtec/sllidar_ros2.git
+\end{lstlisting}
+
+\subsubsection{Build}
+\begin{lstlisting}[style=shell]
+cd /root/ros2_ws
+source /opt/ros/humble/setup.bash
+colcon build --packages-select sllidar_ros2
+source install/setup.bash
+\end{lstlisting}
+
+\subsection{RPLidar starten \& Smoke-Tests}
+
+\subsubsection{Terminal 1: Lidar-Node starten}
+\begin{lstlisting}[style=shell]
+cd ~/amr-platform/docker
+docker compose exec amr_dev bash
+source /opt/ros/humble/setup.bash
+source /root/ros2_ws/install/setup.bash
+ros2 launch sllidar_ros2 sllidar_a1_launch.py serial_port:=/dev/ttyUSB0
+\end{lstlisting}
+
+\begin{cmdbox}[Erwartete Log-Infos (Auszug)]
+\ttfamily
+SLLidar S/N: 74A5FA89C7E19EC8BCE499F0FF725670\\
+Firmware Ver: 1.29\\
+Hardware Rev: 7\\
+health status : OK\\
+current scan mode: Sensitivity, sample rate: 8 Khz, max\_distance: 12.0 m
+\end{cmdbox}
+
+\subsubsection{Terminal 2: Smoke-Tests}
+\begin{lstlisting}[style=shell]
+cd ~/amr-platform/docker
+docker compose exec amr_dev bash
+source /opt/ros/humble/setup.bash
+
+ros2 topic list
+ros2 topic hz /scan
+ros2 topic echo /scan --once
+\end{lstlisting}
+
+\subsubsection{Erwartete Topics}
+\begin{cmdbox}[Topic-Liste]
+\ttfamily
+/cmd\_vel\\
+/esp32/heartbeat\\
+/esp32/led\_cmd\\
+/odom\_raw\\
+/scan\\
+/parameter\_events\\
+/rosout
+\end{cmdbox}
+
+\subsubsection{Prüfpunkte für \topic{/scan}}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l X @{}}
+\toprule
+\textbf{Feld} & \textbf{Erwartung} \\
+\midrule
+\texttt{header.frame\_id} & \texttt{laser} \\
+\texttt{angle\_min}/\texttt{angle\_max} & \(-3.14\,\mathrm{rad}\) bis \(+3.14\,\mathrm{rad}\) \\
+\texttt{range\_min}/\texttt{range\_max} & \(\SI{0.05}{\meter}\) bis \(\SI{12.0}{\meter}\) \\
+\texttt{ranges[]} & Werte \(\SIrange{0.05}{12.0}{\meter}\), \texttt{inf} bei keiner Reflexion \\
+Frequenz & \(\approx \SI{7.6}{\hertz}\) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Troubleshooting}
+
+\subsubsection{\texttt{"Operation timeout"}}
+\textbf{Typisch:} Port ist von anderem Prozess belegt.
+\begin{lstlisting}[style=shell]
+# Auf Pi Host prüfen:
+sudo fuser /dev/ttyUSB0
+
+# Falls belegt:
+sudo kill <PID>
+\end{lstlisting}
+
+\subsubsection{\topic{/scan} nicht vorhanden}
+\begin{itemize}
+  \item Lidar-Node muss in Terminal 1 weiterlaufen.
+  \item Wenn mit \texttt{Ctrl+C} gestoppt: kein \topic{/scan}.
+\end{itemize}
+
+\subsubsection{Device nicht vorhanden}
+\begin{lstlisting}[style=shell]
+ls -l /dev/ttyUSB*
+dmesg | grep -i usb | tail -10
+\end{lstlisting}
+
+\subsubsection{Container sieht Device nicht}
+\begin{lstlisting}[style=shell]
+# docker-compose.yml:
+devices:
+  - /dev/ttyUSB0:/dev/ttyUSB0
+\end{lstlisting}
+
+\subsubsection{Baudrate falsch}
+Standard ist \(\SI{115200}{\baud}\). Falls Timeout:
+\begin{lstlisting}[style=shell]
+ros2 launch sllidar_ros2 sllidar_a1_launch.py \
+  serial_port:=/dev/ttyUSB0 serial_baudrate:=256000
+\end{lstlisting}
+
+\subsection{Statischer TF (temporär für RViz2)}
+Bis Phase 4 (URDF/TF/EKF) fertig ist:
+\begin{lstlisting}[style=shell]
+ros2 run tf2_ros static_transform_publisher \
+  0.12 0.0 0.15 0 0 0 base_link laser
+\end{lstlisting}
+
+\subsection{Nächste Schritte (Phase 4)}
+
+\begin{enumerate}
+  \item URDF erstellen inkl. Transform \texttt{base\_link} \(\rightarrow\) \texttt{laser}
+  \item \texttt{robot\_state\_publisher} für TF-Baum
+  \item \texttt{odom\_converter.py} Bridge Node (Pose2D \(\rightarrow\) Odometry/TF)
+  \item Optional: EKF (robot\_localization)
+\end{enumerate}
+
+\subsection{Changelog}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l X @{}}
+\toprule
+\textbf{Version} & \textbf{Datum} & \textbf{Änderungen} \\
+\midrule
+v3.0 & 2025-12-20 & Status: completed; kein separater RPLidar-Container; Hardware-Info verifiziert; Troubleshooting erweitert \\
+v2.0 & 2025-12-20 & Humble statt Jazzy \\
+v1.0 & 2025-12-19 & Initiale Version \\
+\bottomrule
+\end{tabularx}
+\end{table}

@@ -1,0 +1,172 @@
+% =============================================================================
+% ToDo-Liste AMR-Projekt
+% Fragment ohne Präambel (setzt Styles/Makros aus main.tex voraus)
+% Stand: 2025-12-20 | Aktuelle Phase: 4 (URDF/TF/EKF)
+% =============================================================================
+
+\section{ToDo-Liste AMR-Projekt}
+\label{sec:todo-liste-amr}
+
+\begin{infobox}[Stand]
+\begin{itemize}
+  \item Stand: \textbf{2025-12-20}
+  \item Aktuelle Phase: \textbf{Phase 4 (URDF/TF/EKF)}
+\end{itemize}
+\end{infobox}
+
+\subsection{Phasen-Übersicht}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l X l @{}}
+\toprule
+\textbf{Phase} & \textbf{Beschreibung} & \textbf{Status} \\
+\midrule
+Phase 1 & micro-ROS auf ESP32-S3 & \(\checkmark\) Abgeschlossen \\
+Phase 2 & Docker-Infrastruktur & \(\checkmark\) Abgeschlossen \\
+Phase 3 & RPLidar A1 Integration & \(\checkmark\) Abgeschlossen \\
+Phase 4 & URDF + TF + EKF & \(\triangleleft\) \textbf{NÄCHSTE} \\
+Phase 5 & SLAM (\texttt{slam\_toolbox}) & \(\square\) \\
+Phase 6 & Nav2 Autonome Navigation & \(\square\) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% -----------------------------------------------------------------------------
+\subsection{Phase 1: micro-ROS ESP32-S3 (abgeschlossen)}
+
+\subsubsection{Firmware v3.2.0 (2025-12-20)}
+\begin{itemize}[label=\(\checkmark\)]
+  \item micro-ROS Client über USB-CDC (Serial)
+  \item Dual-Core FreeRTOS (Core 0: Control, Core 1: Comms)
+  \item \topic{/cmd\_vel} \(\rightarrow\) Motorsteuerung
+  \item \topic{/odom\_raw} \(\rightarrow\) Odometrie (\texttt{Pose2D})
+  \item \topic{/esp32/heartbeat} \(\rightarrow\) Lebenszeichen (\(\SI{1}{\hertz}\))
+  \item Failsafe (\(\SI{2000}{\milli\second}\) Timeout)
+  \item Feedforward-Steuerung (Gain \(= 2.0\))
+\end{itemize}
+
+% -----------------------------------------------------------------------------
+\subsection{Phase 2: Docker-Infrastruktur (abgeschlossen)}
+
+\begin{itemize}[label=\(\checkmark\)]
+  \item \texttt{amr\_agent} Container (micro-ROS Agent)
+  \item \texttt{amr\_dev} Container (ROS 2 Humble Workspace)
+  \item \texttt{docker compose up -d} funktioniert
+  \item Volumes für \texttt{ros2\_ws} gemountet
+\end{itemize}
+
+% -----------------------------------------------------------------------------
+\subsection{Phase 3: RPLidar A1 (abgeschlossen)}
+
+\subsubsection{Verifiziert (2025-12-20)}
+\begin{itemize}[label=\(\checkmark\)]
+  \item \texttt{sllidar\_ros2} gebaut
+  \item \topic{/scan} publiziert (\(\approx \SI{7.6}{\hertz}\))
+  \item Scan-Daten plausibel (\(\SIrange{0.05}{12}{\meter}\))
+  \item \texttt{frame\_id}: \texttt{laser}
+  \item \texttt{docker-compose.yml} aktualisiert
+\end{itemize}
+
+\subsubsection{Hardware-Info}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l X @{}}
+\toprule
+\textbf{Parameter} & \textbf{Wert} \\
+\midrule
+S/N & 74A5FA89C7E19EC8BCE499F0FF725670 \\
+Firmware & 1.29 \\
+Scan Mode & Sensitivity \\
+Sample Rate & \(\SI{8}{\kilo\hertz}\) \\
+Frequenz & \(\approx \SI{7.6}{\hertz}\) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% -----------------------------------------------------------------------------
+\subsection{Phase 4: URDF + TF + EKF (nächste Phase)}
+\label{subsec:phase4-next}
+
+\subsubsection{ToDos}
+\begin{itemize}[label=\(\square\)]
+  \item URDF erstellen
+  \begin{itemize}[label=\(\square\)]
+    \item \texttt{base\_footprint} (Boden)
+    \item \texttt{base\_link} (Chassis)
+    \item \texttt{laser} Frame
+  \end{itemize}
+  \item \texttt{robot\_state\_publisher} für statische TFs
+  \item \texttt{odom\_converter.py} Bridge Node
+  \begin{itemize}[label=\(\square\)]
+    \item \topic{/odom\_raw} \(\rightarrow\) \topic{/odom}
+    \item TF: \texttt{odom} \(\rightarrow\) \texttt{base\_footprint}
+  \end{itemize}
+  \item Optional: EKF (\texttt{robot\_localization})
+\end{itemize}
+
+\subsubsection{TF-Baum Ziel}
+\begin{cmdbox}[TF-Ziel]
+\begin{lstlisting}[style=shell]
+odom -> base_footprint -> base_link -> laser
+\end{lstlisting}
+\end{cmdbox}
+
+% -----------------------------------------------------------------------------
+\subsection{Phase 5: SLAM}
+
+\begin{itemize}[label=\(\square\)]
+  \item \texttt{slam\_toolbox} installieren
+  \item Online Async SLAM
+  \item Testraum kartieren
+  \item Karte speichern
+\end{itemize}
+
+% -----------------------------------------------------------------------------
+\subsection{Phase 6: Nav2}
+
+\begin{itemize}[label=\(\square\)]
+  \item Nav2 Stack
+  \item AMCL Lokalisierung
+  \item Costmap
+  \item Autonome Navigation
+\end{itemize}
+
+% -----------------------------------------------------------------------------
+\subsection{Aktuelle Hardware-Ports}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l X @{}}
+\toprule
+\textbf{Device} & \textbf{Port} & \textbf{Funktion} \\
+\midrule
+ESP32-S3 & \filep{/dev/ttyACM0} & micro-ROS (\(921600\,\mathrm{Bd}\)) \\
+RPLidar A1 & \filep{/dev/ttyUSB0} & LaserScan (\topic{/scan}) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% -----------------------------------------------------------------------------
+\subsection{Quick Reference}
+
+\subsubsection{Container starten}
+\begin{lstlisting}[style=shell]
+cd ~/amr-platform/docker
+docker compose up -d
+\end{lstlisting}
+
+\subsubsection{RPLidar starten}
+\begin{lstlisting}[style=shell]
+docker compose exec amr_dev bash
+source /opt/ros/humble/setup.bash
+source /root/ros2_ws/install/setup.bash
+ros2 launch sllidar_ros2 sllidar_a1_launch.py serial_port:=/dev/ttyUSB0
+\end{lstlisting}
+
+\subsubsection{Topics prüfen}
+\begin{lstlisting}[style=shell]
+ros2 topic list
+ros2 topic hz /scan
+ros2 topic echo /scan --once
+\end{lstlisting}

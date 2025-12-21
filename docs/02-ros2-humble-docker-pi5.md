@@ -1,5 +1,7 @@
 ---
 title: "Phase 2 – ROS 2 Humble auf Pi 5 via Docker + micro-ROS Agent"
+type: "phase-doc"
+goal: "Reproduzierbare Host-Umgebung (Docker) bereitstellen, die micro-ROS Agent stabil betreibt und Phase 1 (ESP32) über USB-Serial integriert."
 status: "completed"
 updated: "2025-12-20"
 version: "2.0"
@@ -9,229 +11,163 @@ next:
   - "Phase 3 (RPLidar A1)"
 ---
 
-# Phase 2: ROS 2 Humble auf Raspberry Pi 5 (Docker) + micro-ROS Agent
+# Phase 2 – ROS 2 Humble auf Raspberry Pi 5 (Docker) + micro-ROS Agent
 
-## Zielbild & Definition of Done
+## 0) Ziel und Regel der Phasen-Dokumentation
 
-### Zielbild
+### Ziel
+
+Die Phasen-Doku ist ein **Phasen-Nachweis** (evidence-based):
+Sie hält fest, **was** Phase 2 liefert, **wie** es verifiziert wurde, und welche **Artefakte/Parameter** im Repo den Stand reproduzierbar machen. Phase 3+ soll darauf ohne Rätselraten aufbauen.
+
+### Regel (Scope-Grenze)
+
+- Zielbild, DoD, Verifikationsprotokoll, Artefakte (docker-compose/Dockerfile), verifizierte Parameter, bekannte Grenzen.
+
+---
+
+## 1) Zielbild (Soll-Zustand)
 
 - Raspberry Pi 5 (Raspberry Pi OS 64-bit) betreibt **ROS 2 Humble** in **Docker**.
-- micro-ROS Agent läuft reproduzierbar (Container), verbindet sich über **USB-Serial** zum ESP32-S3.
+- micro-ROS Agent läuft als Container und verbindet sich über **USB-Serial** mit dem ESP32-S3.
 - Host-ROS kann:
-  - `/cmd_vel` publizieren → Motor reagiert
-  - `/odom_raw` empfangen → Werte plausibel
-  - `/esp32/heartbeat` empfangen → Agent-Verbindung verifiziert
+  - `/cmd_vel` publizieren → Drivebase reagiert
+  - `/odom_raw` empfangen → Werte kommen an
+  - `/esp32/heartbeat` empfangen → Verbindung ist nachweisbar
+- Setup ist nach Reboot reproduzierbar (`docker compose up -d` genügt).
 
-### DoD (verifiziert 2025-12-20)
+---
 
-- [x] `docker compose up` startet Container ohne manuelle Nacharbeit.
-- [x] Agent verbindet sich stabil über `/dev/ttyACM0` mit 921600 Baud.
-- [x] ROS Smoke-Tests sind grün:
+## 2) Definition of Done (DoD) – verifiziert am 2025-12-20
+
+- [x] `docker compose up -d` startet Container ohne manuelle Nacharbeit.
+- [x] Agent verbindet stabil über `/dev/ttyACM0` mit `921600` Baud.
+- [x] ROS Smoke-Checks sind grün:
   - [x] `ros2 topic list` zeigt `/cmd_vel`, `/odom_raw`, `/esp32/heartbeat`, `/esp32/led_cmd`
-  - [x] `ros2 topic pub /cmd_vel ...` bewegt den Rover
-  - [x] `ros2 topic echo /odom_raw` liefert kontinuierliche Werte
-- [x] Failsafe stoppt Motoren nach 2s Timeout
+  - [x] `ros2 topic pub /cmd_vel ...` bewirkt Motorreaktion (Bench-Test)
+  - [x] `ros2 topic echo /odom_raw` liefert Werte
+- [x] Failsafe der Drivebase stoppt nach ~\(2\,\mathrm{s}\) bei ausbleibenden Kommandos (Phase-1-Funktion über Host verifiziert).
 
 ---
 
-## 1) Docker-Images (Regel)
+## 3) Artefakte (Repo-Wahrheit)
 
-| Container | Image | Funktion |
-|-----------|-------|----------|
-| `amr_agent` | `microros/micro-ros-agent:humble` | Serial Agent |
-| `amr_dev` | Custom (ROS 2 Humble) | Workspace |
-
-**Warum Humble statt Jazzy:**
-
-- micro-ROS Agent für Humble stabiler auf arm64
-- Kompatibilität mit bestehenden Packages (Nav2, slam_toolbox)
+- Compose: `docker/docker-compose.yml`
+- Dev-Image: `docker/Dockerfile`
+- Workspace-Mount: `ros2_ws/` (Host-Volume in Container)
 
 ---
 
-## 2) Host-Voraussetzungen
+## 4) Container-Setup (verifizierter Stand)
 
-### 2.1 System
+| Container | Image | Aufgabe |
+|-----------|-------|---------|
+| `amr_agent` | `microros/micro-ros-agent:humble` | micro-ROS Agent (Serial) |
+| `amr_dev` | Custom (ROS 2 Humble) | Tools + Workspace (colcon, rviz2, xacro, tf2-tools) |
 
-- Raspberry Pi 5, Raspberry Pi OS **64-bit** (Bookworm)
+**Verifizierte Betriebsparameter:**
+
+- Device: `/dev/ttyACM0`
+- Baudrate: `921600`
+- Netzwerk: `network_mode: host`
+
+---
+
+## 5) Verifikation (Smoke-Checks vom 2025-12-20)
+
+> Zweck: Nachweis, dass Phase 2 die Integration zu Phase 1 herstellt.
+
+### 5.1 Verbindung (Agent)
+
+- Erwartung: Agent läuft und meldet „running“ (fd stabil).
+
+### 5.2 Topics sichtbar
+
+- Erwartete Topics:
+
+```
+/cmd_vel
+/odom_raw
+/esp32/heartbeat
+/esp32/led_cmd
+```
+
+### 5.3 Datenfluss
+
+- `/esp32/heartbeat`: ~\(1\,\mathrm{Hz}\)
+- `/odom_raw`: Werte kommen an (Format `Pose2D`)
+- `/cmd_vel`: bewirkt Motorreaktion (Bench-Test)
+
+---
+
+## 6) Host-Voraussetzungen (minimal, für Reproduktion)
+
+- Raspberry Pi 5
+- Raspberry Pi OS 64-bit
 - Docker Engine + Docker Compose Plugin
+- USB-Gerät ESP32 als `/dev/ttyACM0` verfügbar
 
-### 2.2 USB-Serial prüfen
-
-```bash
-ls -l /dev/ttyACM*
-# Erwartung: /dev/ttyACM0 (ESP32-S3)
-
-ls -l /dev/ttyUSB*
-# Erwartung: /dev/ttyUSB0 (RPLidar A1)
-```
+*(LiDAR `/dev/ttyUSB0` ist Thema von Phase 3; in Phase 2 nur „sichtbar“, aber nicht erforderlich.)*
 
 ---
 
-## 3) Repo-Struktur
+## 7) Smoke-Test (kurz, reproduzierbar)
 
-```
-amr-platform/
-├── docker/
-│   ├── docker-compose.yml
-│   └── Dockerfile
-├── ros2_ws/
-│   └── src/
-├── firmware/
-│   ├── src/main.cpp
-│   └── include/config.h
-└── docs/
-    └── phases/
-```
-
----
-
-## 4) Docker Compose
-
-### docker-compose.yml
-
-```yaml
-services:
-  microros_agent:
-    image: microros/micro-ros-agent:humble
-    container_name: amr_agent
-    network_mode: host
-    privileged: true
-    restart: always
-    command: serial --dev /dev/ttyACM0 -b 921600
-    devices:
-      - /dev/ttyACM0:/dev/ttyACM0
-
-  amr_dev:
-    build: .
-    container_name: amr_base
-    network_mode: host
-    privileged: true
-    volumes:
-      - ../ros2_ws:/root/ros2_ws
-    command: tail -f /dev/null
-```
-
-### Dockerfile
-
-```dockerfile
-FROM ros:humble-ros-base
-
-RUN apt-get update && apt-get install -y \
-    python3-colcon-common-extensions \
-    ros-humble-tf2-tools \
-    ros-humble-xacro \
-    ros-humble-rviz2 \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /root/ros2_ws
-```
-
----
-
-## 5) Befehle
-
-### 5.1 Nach Pi Reboot
+1) Container starten:
 
 ```bash
 cd ~/amr-platform/docker
 docker compose up -d
-sleep 5
-docker compose logs microros_agent --tail 5
 ```
 
-**Erwartung:** `running... | fd: 3`
-
-### 5.2 Nach ESP32 Reboot
-
-```bash
-docker compose restart microros_agent
-sleep 5
-docker compose logs microros_agent --tail 5
-```
-
-### 5.3 In Container gehen
+1. In Dev-Container:
 
 ```bash
 docker compose exec amr_dev bash
 source /opt/ros/humble/setup.bash
 ```
 
----
-
-## 6) Smoke-Tests
-
-### 6.1 Topics prüfen
+1. Topics prüfen:
 
 ```bash
 ros2 topic list
 ```
 
-**Erwartung:**
-
-```
-/cmd_vel
-/esp32/heartbeat
-/esp32/led_cmd
-/odom_raw
-/parameter_events
-/rosout
-```
-
-### 6.2 Heartbeat
+1. Heartbeat prüfen:
 
 ```bash
 ros2 topic echo /esp32/heartbeat
 ```
 
-**Erwartung:** Counter steigt ~1 Hz
-
-### 6.3 Odometrie
+1. Odom einmal:
 
 ```bash
 ros2 topic echo /odom_raw --once
 ```
 
-**Erwartung:** x, y, theta Werte
-
-### 6.4 Motor-Test (⚠️ Räder aufbocken!)
-
-```bash
-# Vorwärts
-ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \
-  "{linear: {x: 0.15}, angular: {z: 0.0}}" -r 10
-
-# Ctrl+C → Failsafe stoppt nach 2s
-```
+*(Motor-Test bleibt Bench-only und ist als Phase-1-Nachweis bereits geführt.)*
 
 ---
 
-## 7) Troubleshooting
+## 8) Bekannte Einschränkungen (für Phase 3+ relevant)
 
-| Problem | Ursache | Lösung |
-|---------|---------|--------|
-| Agent sieht ESP32 nicht | Device-Pfad falsch | `ls /dev/ttyACM*` prüfen |
-| Topics fehlen | Agent nicht verbunden | `docker compose restart microros_agent` |
-| ROS sieht keine Topics | Domain-ID Mismatch | `network_mode: host` nutzen |
-| Motor reagiert nicht | Failsafe greift | Timeout prüfen (2000ms) |
+- Setup ist host-netzwerkbasiert (`network_mode: host`), um Domain-/Discovery-Probleme zu vermeiden.
+- Der Agent ist an einen festen Device-Pfad gebunden (`/dev/ttyACM0`); udev-Regel/By-Id kann später stabilisieren.
 
 ---
 
-## 8) Verifizierte Konfiguration
+## 9) Übergabe an Phase 3 (Was ist jetzt „bereit“?)
 
-| Parameter | Wert |
-|-----------|------|
-| ROS-Version | Humble |
-| Agent-Image | `microros/micro-ros-agent:humble` |
-| Baudrate | 921600 |
-| Device | `/dev/ttyACM0` |
-| Container | `amr_agent`, `amr_dev` |
-| Network | host |
+- Host-ROS Umgebung steht reproduzierbar (Docker).
+- micro-ROS Agent verbindet zuverlässig zur Drivebase.
+- ROS CLI kann Topics sehen, schreiben und lesen.
+- Grundlage für LiDAR-Integration (Phase 3) ist vorhanden.
 
 ---
 
-## 9) Changelog
+## 10) Changelog (phase-relevant)
 
-| Version | Datum | Änderungen |
-|---------|-------|------------|
-| v2.0 | 2025-12-20 | Humble statt Jazzy, 921600 Baud, Container-Namen aktualisiert, Status: abgeschlossen |
-| v1.0 | 2025-12-19 | Initiale Jazzy-Version (überholt) |
+| Version | Datum      | Änderung                                                                   |
+| ------- | ---------- | -------------------------------------------------------------------------- |
+| v2.0    | 2025-12-20 | ROS 2 Humble + Agent `humble`, 921600 Baud, Container/Compose konsolidiert |
+| v1.0    | 2025-12-19 | Initial (Jazzy-Variante, überholt)                                         |

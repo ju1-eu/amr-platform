@@ -1,0 +1,368 @@
+% =====================================================================
+% Systemdokumentation: AMR Low-Level Controller
+% Fragment ohne Präambel (setzt Styles/Makros aus main.tex voraus)
+% Version: 3.2.0 | Datum: 20.12.2025 | Status: Phase 1 abgeschlossen
+% =====================================================================
+
+\section{Systemdokumentation: AMR Low-Level Controller}
+\label{sec:systemdokumentation-amr-llc}
+
+\begin{infobox}[Meta]
+\begin{itemize}
+  \item Version: \textbf{3.2.0}
+  \item Datum: \textbf{20.12.2025}
+  \item Status: \(\checkmark\) \textbf{Phase 1 abgeschlossen}
+\end{itemize}
+\end{infobox}
+
+\subsection{Architektur-Übersicht}
+
+Das System implementiert eine \textbf{Hybrid-Echtzeit-Architektur}. Harte Echtzeit-Anforderungen (Motorsteuerung) sind strikt von Kommunikations-Aufgaben (micro-ROS) getrennt durch Dual-Core-Nutzung des ESP32-S3.
+
+\subsubsection{Datenfluss (Übersicht)}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.92\textwidth]{images/Architektur.png}
+  \caption{Phase-1-Architektur (micro-ROS über USB-Serial): Der ESP32-S3 arbeitet als micro-ROS-Client und führt auf Core~0 die Regel-/Odometrie-Schleife (\(\SI{100}{\hertz}\)) inkl. Failsafe (\(\SI{2}{\second}\) Timeout) aus, während Core~1 die micro-ROS-Kommunikation bedient. Über USB-CDC bei \(\SI{921600}{\baud}\) ist der Raspberry~Pi~5 (Docker) mit dem \texttt{micro-ros-agent} verbunden; im ROS~2-Workspace werden Topics wie \topic{/cmd\_vel} (Motorsteuerung) und \topic{/odom\_raw} (Pose2D) getestet/überwacht.}
+  \label{fig:architektur}
+\end{figure}
+
+\subsection{Firmware-Architektur (Dual-Core)}
+
+Die Firmware nutzt \textbf{FreeRTOS}, um zwei parallele Tasks auf den physischen CPU-Kernen auszuführen.
+
+\subsubsection{Core 0: \texttt{controlTask} (Hard Real-Time)}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l @{}}
+\toprule
+\textbf{Eigenschaft} & \textbf{Wert} \\
+\midrule
+Task Name & \texttt{controlTask} \\
+Frequenz & \(\SI{100}{\hertz}\) (deterministisch via \texttt{vTaskDelayUntil}) \\
+Priorität & hoch (\texttt{configMAX\_PRIORITIES - 1}) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Aufgaben:}
+\begin{enumerate}
+  \item Encoder-Interrupts atomar auslesen
+  \item Odometrie integrieren (\(x, y, \theta\))
+  \item Feedforward-Stellgrößen berechnen (Gain \(= 2.0\))
+  \item Safety: Heartbeat-Timeout (\(2000\,\mathrm{ms}\)) \(\Rightarrow\) Not-Halt
+\end{enumerate}
+
+\subsubsection{Core 1: \texttt{loop()} (Communication)}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l @{}}
+\toprule
+\textbf{Eigenschaft} & \textbf{Wert} \\
+\midrule
+Task & \texttt{loop()} (Arduino Standard) \\
+Odom Publish & \(\SI{20}{\hertz}\) \\
+Heartbeat & \(\SI{1}{\hertz}\) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Aufgaben:}
+\begin{enumerate}
+  \item micro-ROS Executor Spin (Empfang/Versand)
+  \item Serialisierung der DDS-Nachrichten
+  \item I\textsuperscript{2}C-Kommunikation (geplant: IMU)
+\end{enumerate}
+
+\textbf{Datenaustausch:} über \texttt{SharedData} Struct, geschützt durch Mutex/Semaphore.
+
+\subsubsection{Steuerungslogik (Feedforward, PID deaktiviert)}
+
+\begin{lstlisting}[style=arduino]
+// Feedforward + PID (PID aktuell deaktiviert)
+float feedforward_gain = 2.0f;
+float pwm_l = feedforward_gain * set_v_l + pid_left.compute(set_v_l, v_enc_l, dt);
+float pwm_r = feedforward_gain * set_v_r + pid_right.compute(set_v_r, v_enc_r, dt);
+
+// Begrenzen auf PWM-Bereich
+pwm_l = constrain(pwm_l, -1.0f, 1.0f);
+pwm_r = constrain(pwm_r, -1.0f, 1.0f);
+\end{lstlisting}
+
+\begin{infobox}[Hinweis]
+PID ist deaktiviert (\(K_p=K_i=K_d=0\)), da die Encoder-Polarität invertiert ist. Feedforward ermöglicht stabile Open-Loop-Steuerung.
+\end{infobox}
+
+\subsection{ROS 2 Schnittstelle (API)}
+
+\subsubsection{Topics}
+
+\begin{table}[H]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\textwidth}{@{} l p{3.2cm} c c c X @{}}
+\toprule
+\textbf{Topic} & \textbf{Typ} & \textbf{Richtung} & \textbf{Frequenz} & \textbf{QoS} & \textbf{Beschreibung} \\
+\midrule
+\topic{/cmd\_vel} & \texttt{geometry\_msgs/Twist} & Sub & -- & Reliable & Geschwindigkeitsbefehle \\
+\topic{/odom\_raw} & \texttt{geometry\_msgs/Pose2D} & Pub & \(\SI{20}{\hertz}\) & Best Effort & Odometrie (\(x,y,\theta\)) \\
+\topic{/esp32/heartbeat} & \texttt{std\_msgs/Int32} & Pub & \(\SI{1}{\hertz}\) & Best Effort & Lebenszeichen \\
+\topic{/esp32/led\_cmd} & \texttt{std\_msgs/Bool} & Sub & -- & Reliable & LED/MOSFET-Steuerung \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+
+\subsubsection{Nachrichtenformate}
+
+\paragraph{\topic{/cmd\_vel} (Input)}
+\begin{lstlisting}[style=shell]
+linear:
+  x: 0.15    # [m/s] Vorwärts (+) / Rückwärts (-)
+  y: 0.0     # Nicht verwendet
+  z: 0.0     # Nicht verwendet
+angular:
+  x: 0.0     # Nicht verwendet
+  y: 0.0     # Nicht verwendet
+  z: 0.5     # [rad/s] Links (+) / Rechts (-)
+\end{lstlisting}
+
+\paragraph{\topic{/odom\_raw} (Output)}
+\begin{lstlisting}[style=shell]
+x: 0.899     # [m]
+y: -0.329    # [m]
+theta: 6.09  # [rad]
+\end{lstlisting}
+
+\subsection{Konfiguration \& Parameter}
+
+\subsubsection{\texttt{config.h}}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l X @{}}
+\toprule
+\textbf{Parameter} & \textbf{Wert} & \textbf{Beschreibung} \\
+\midrule
+\texttt{LOOP\_RATE\_HZ} & 100 & Control-Zyklus (\(\SI{10}{\milli\second}\)) \\
+\texttt{ODOM\_PUBLISH\_HZ} & 20 & Odom Publish (\(\SI{50}{\milli\second}\)) \\
+\texttt{FAILSAFE\_TIMEOUT\_MS} & 2000 & Heartbeat-Timeout \\
+\texttt{MOTOR\_PWM\_FREQ} & 20000 & \(\SI{20}{\kilo\hertz}\) (unhörbar) \\
+\texttt{MOTOR\_PWM\_BITS} & 8 & Auflösung 0--255 \\
+\texttt{PWM\_DEADZONE} & 35 & Mindest-PWM \\
+\texttt{WHEEL\_DIAMETER} & 0.065 & Raddurchmesser \([\mathrm{m}]\) \\
+\texttt{WHEEL\_BASE} & 0.178 & Spurbreite \([\mathrm{m}]\) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{PWM-Kanäle (getauscht für korrekte Richtung)}
+
+\begin{lstlisting}[style=arduino]
+#define PWM_CH_LEFT_A  1  // war 0
+#define PWM_CH_LEFT_B  0  // war 1
+#define PWM_CH_RIGHT_A 3  // war 2
+#define PWM_CH_RIGHT_B 2  // war 3
+\end{lstlisting}
+
+\subsubsection{Regelung}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l X @{}}
+\toprule
+\textbf{Parameter} & \textbf{Wert} & \textbf{Beschreibung} \\
+\midrule
+\texttt{PID\_KP} & 0.0 & deaktiviert \\
+\texttt{PID\_KI} & 0.0 & deaktiviert \\
+\texttt{PID\_KD} & 0.0 & deaktiviert \\
+\texttt{feedforward\_gain} & 2.0 & Direkte Ansteuerung \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{HAL-Pins (Übersicht)}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l l X @{}}
+\toprule
+\textbf{Pin} & \textbf{Funktion} & \textbf{Modus} & \textbf{Hardware} \\
+\midrule
+D0 & Motor Left A & PWM \(\rightarrow\) CH 1 & Cytron MDD3A \\
+D1 & Motor Left B & PWM \(\rightarrow\) CH 0 & Cytron MDD3A \\
+D2 & Motor Right A & PWM \(\rightarrow\) CH 3 & Cytron MDD3A \\
+D3 & Motor Right B & PWM \(\rightarrow\) CH 2 & Cytron MDD3A \\
+D6 & Encoder Left & ISR (Rising) & JGA25-370 \\
+D7 & Encoder Right & ISR (Rising) & JGA25-370 \\
+D10 & LED/MOSFET & Digital Out & IRLZ24N \\
+D4, D5 & I\textsuperscript{2}C & Wire & reserviert (MPU6050) \\
+D8, D9 & Servo & PWM & reserviert (Kamera) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Inbetriebnahme}
+
+\subsubsection{Nach Pi Reboot}
+\begin{lstlisting}[style=shell]
+cd ~/amr-platform/docker
+docker compose up -d
+sleep 5
+docker compose logs microros_agent --tail 5
+\end{lstlisting}
+
+\begin{cmdbox}[Erwartung]
+\ttfamily running... \textbar\ fd: 3
+\end{cmdbox}
+
+\subsubsection{Nach ESP32 Reboot}
+\begin{lstlisting}[style=shell]
+cd ~/amr-platform/docker
+docker compose restart microros_agent
+sleep 5
+docker compose logs microros_agent --tail 5
+\end{lstlisting}
+
+\subsubsection{Verifikation}
+\paragraph{Topics prüfen}
+\begin{lstlisting}[style=shell]
+docker compose exec amr_dev bash
+source /opt/ros/humble/setup.bash
+ros2 topic list
+\end{lstlisting}
+
+\begin{cmdbox}[Erwartung]
+\ttfamily
+/cmd\_vel\\
+/esp32/heartbeat\\
+/esp32/led\_cmd\\
+/odom\_raw\\
+/parameter\_events\\
+/rosout
+\end{cmdbox}
+
+\paragraph{Heartbeat prüfen}
+\begin{lstlisting}[style=shell]
+ros2 topic echo /esp32/heartbeat
+\end{lstlisting}
+
+\paragraph{Odometrie prüfen}
+\begin{lstlisting}[style=shell]
+ros2 topic echo /odom_raw --once
+\end{lstlisting}
+
+\paragraph{Motor-Test (Sicherheit)}
+\begin{warnbox}[Sicherheit]
+Motor-Tests nur mit aufgebockten Rädern (kein Bodenkontakt).
+\end{warnbox}
+
+\begin{lstlisting}[style=shell]
+ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \
+  "{linear: {x: 0.15}, angular: {z: 0.0}}" -r 10
+\end{lstlisting}
+
+\subsection{Testergebnisse (20.12.2025)}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} X X c @{}}
+\toprule
+\textbf{Test} & \textbf{Ergebnis} & \textbf{Status} \\
+\midrule
+Agent-Verbindung & \texttt{fd: 3} stabil & \(\checkmark\) \\
+Heartbeat & \(\approx \SI{1}{\hertz}\) & \(\checkmark\) \\
+Vorwärts & Räder drehen vorwärts & \(\checkmark\) \\
+Rückwärts & Räder drehen rückwärts & \(\checkmark\) \\
+Drehen links & Roboter dreht links & \(\checkmark\) \\
+Drehen rechts & Roboter dreht rechts & \(\checkmark\) \\
+Failsafe & Stop nach \(\approx \SI{2}{\second}\) & \(\checkmark\) \\
+Odom & \(x,y,\theta\) plausibel & \(\checkmark\) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Known Issues \& Lösungen}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} X X X @{}}
+\toprule
+\textbf{Symptom} & \textbf{Ursache} & \textbf{Lösung} \\
+\midrule
+Roboter ruckelt & Failsafe greift & \texttt{FAILSAFE\_TIMEOUT\_MS} erhöhen (aktuell \(2000\,\mathrm{ms}\)) \\
+Keine Odom-Daten & QoS Mismatch & Best Effort QoS nutzen \\
+Motor reagiert nicht & Feedforward zu niedrig & \texttt{feedforward\_gain} erhöhen \\
+PID eskaliert & Encoder-Polarität invertiert & PID deaktivieren (\(K_p=0\)) \\
+Räder drehen falsch & PWM-Kanäle & A\(\leftrightarrow\)B tauschen in \texttt{config.h} \\
+Topics fehlen & Agent nicht verbunden & \texttt{docker compose restart microros\_agent} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Bekannte Einschränkungen}
+
+\begin{enumerate}
+  \item Open-Loop-Steuerung: PID deaktiviert, keine Geschwindigkeitsregelung
+  \item Encoder A-only: Richtung aus Soll-Geschwindigkeit abgeleitet
+  \item Odom-Rate: effektiv \(\SIrange{3}{6}{\hertz}\) durch Serial-Transport
+\end{enumerate}
+
+\subsection{Projektstruktur}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.4\textwidth]{images/projekt-struktur.png}
+  \caption{Projektstruktur des Repositories \texttt{amr-platform}: \texttt{firmware/} enthält die ESP32-S3-Firmware (PlatformIO mit \texttt{src/main.cpp} und \texttt{include/config.h}), \texttt{ros2\_ws/src/} den ROS~2-Workspace mit Paketen für Bridge/Bringup/Description sowie \texttt{sllidar\_ros2}. Die Laufzeitumgebung ist in \texttt{docker/} (Dockerfile, Compose, Entrypoint) gekapselt. Automatisierung und Betrieb liegen in \texttt{scripts/} (Deployment, micro-ROS-Agent-Service, Dokumentations-Converter). \texttt{docs/} bündelt Projektdokumentation; \texttt{README.md}, \texttt{LICENSE}, \texttt{start.html} und \texttt{main-design.css} bilden Einstieg und Styling der Doku.}
+  \label{fig:projektstruktur}
+\end{figure}
+
+
+\subsection{Changelog}
+
+\subsubsection{v3.2.0 (20.12.2025) -- Phase 1 Abschluss}
+\begin{itemize}
+  \item Motor-Richtung: PWM-Kanäle getauscht (A\(\leftrightarrow\)B)
+  \item Steuerung: Feedforward (Gain \(= 2.0\)) statt PID
+  \item PID: deaktiviert (\(K_p=K_i=K_d=0\)) wegen Encoder-Polarität
+  \item Failsafe: Timeout auf \(2000\,\mathrm{ms}\) erhöht
+  \item Tests: alle Richtungen validiert
+\end{itemize}
+
+\subsubsection{v3.1.0 (20.12.2025)}
+\begin{itemize}
+  \item Baudrate: \(921600\,\mathrm{Bd}\)
+  \item PID: aktiviert (\(K_p = 1.0\))
+  \item Problem: PID-Eskalation durch Encoder-Polarität
+\end{itemize}
+
+\subsubsection{v3.0.0 (14.12.2025) -- Major Release}
+\begin{itemize}
+  \item Architektur: Wechsel auf Dual-Core (App/Pro CPU Trennung)
+  \item RTOS: FreeRTOS Tasks und Mutex-Synchronisation
+  \item Daten: Optimierung auf \texttt{Pose2D} (Bandbreite reduziert)
+  \item Hardware: Initialisierung aller Pins
+\end{itemize}
+
+\subsection{Nächste Schritte}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l X c @{}}
+\toprule
+\textbf{Phase} & \textbf{Beschreibung} & \textbf{Status} \\
+\midrule
+Phase 1 & micro-ROS ESP32-S3 & \(\checkmark\) \\
+Phase 2 & Docker-Infrastruktur & \(\checkmark\) \\
+Phase 3 & RPLidar A1 Integration & \(\square\) \\
+Phase 4 & EKF Sensor Fusion & \(\square\) \\
+Phase 5 & SLAM (\texttt{slam\_toolbox}) & \(\square\) \\
+Phase 6 & Nav2 Autonome Navigation & \(\square\) \\
+\bottomrule
+\end{tabularx}
+\end{table}

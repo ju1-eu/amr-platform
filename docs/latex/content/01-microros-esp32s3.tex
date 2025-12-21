@@ -1,0 +1,373 @@
+% =====================================================================
+% Phase 1 – micro-ROS auf ESP32-S3 (USB-Serial)
+% Quelle: 01-microros-esp32s3.md (v3.2.0, updated 2025-12-20)
+% =====================================================================
+
+\section{Phase 1: micro-ROS auf ESP32-S3 (USB-Serial)}
+
+\begin{infobox}[Status \& Version]
+\begin{itemize}
+  \item Status: \textbf{completed}
+  \item Updated: \textbf{2025-12-20}
+  \item Version: \textbf{3.2.0}
+  \item Source: \filep{firmware/src/main.cpp}, \filep{firmware/include/config.h}, \filep{firmware/platformio.ini}
+\end{itemize}
+\end{infobox}
+
+\subsection{Zielbild \& Definition of Done}
+
+\textbf{Zielbild:}
+\begin{itemize}
+  \item ESP32-S3 läuft als \textbf{micro-ROS Client} über \textbf{USB-CDC (Serial)}.
+  \item \topic{/cmd\_vel} steuert Motoren über \textbf{Cytron MDD3A Dual-PWM}.
+  \item \topic{/odom\_raw} wird publiziert (\texttt{geometry\_msgs/Pose2D}) und ist plausibel.
+  \item \textbf{Failsafe} stoppt Motoren nach \texttt{FAILSAFE\_TIMEOUT\_MS = 2000}.
+\end{itemize}
+
+\textbf{DoD (verifiziert 2025-12-20):}
+\begin{itemize}[label=\(\checkmark\)]
+  \item Agent verbindet stabil (Reconnect reproduzierbar).
+  \item \topic{/cmd\_vel} wirkt (vor/zurück/rotieren).
+  \item \topic{/odom\_raw} plausibel (\(x\) steigt vorwärts, \(\theta\) bei Drehung).
+  \item Timeout-Failsafe stoppt deterministisch nach \(\approx \SI{2}{\second}\).
+  \item \topic{/esp32/heartbeat} läuft (\(\approx \SI{1}{\hertz}\)).
+\end{itemize}
+
+\subsection{Testergebnisse (2025-12-20)}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l X X c @{}}
+\toprule
+\textbf{Test} & \textbf{Befehl} & \textbf{Ergebnis} & \textbf{Status} \\
+\midrule
+Agent-Verbindung & -- & \texttt{fd: 3} stabil & \(\checkmark\) \\
+Heartbeat & \texttt{ros2 topic echo /esp32/heartbeat} & \(\approx \SI{1}{\hertz}\) & \(\checkmark\) \\
+Vorwärts & \texttt{linear.x: 0.15} & Räder drehen vorwärts & \(\checkmark\) \\
+Rückwärts & \texttt{linear.x: -0.15} & Räder drehen rückwärts & \(\checkmark\) \\
+Drehen links & \texttt{angular.z: 0.5} & Roboter dreht links & \(\checkmark\) \\
+Drehen rechts & \texttt{angular.z: -0.5} & Roboter dreht rechts & \(\checkmark\) \\
+Failsafe & Ctrl+C, \(\SI{2}{\second}\) warten & Motoren stoppen & \(\checkmark\) \\
+Odom & \texttt{ros2 topic echo /odom\_raw} & \(x,y,\theta\) plausibel & \(\checkmark\) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Odom-Beispiel nach Testfahrt:}
+\begin{lstlisting}[style=shell]
+x: 0.899
+y: -0.329
+theta: 6.09
+\end{lstlisting}
+
+\subsection{Systemübersicht}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.92\textwidth]{images/Architektur.png}
+  \caption{Phase-1-Architektur (micro-ROS über USB-Serial): Der ESP32-S3 arbeitet als micro-ROS-Client und führt auf Core~0 die Regel-/Odometrie-Schleife (\(\SI{100}{\hertz}\)) inkl. Failsafe (\(\SI{2}{\second}\) Timeout) aus, während Core~1 die micro-ROS-Kommunikation bedient. Über USB-CDC bei \(\SI{921600}{\baud}\) ist der Raspberry~Pi~5 (Docker) mit dem \texttt{micro-ros-agent} verbunden; im ROS~2-Workspace werden Topics wie \topic{/cmd\_vel} (Motorsteuerung) und \topic{/odom\_raw} (Pose2D) getestet/überwacht.}
+  \label{fig:architektur}
+\end{figure}
+
+
+
+\subsection{Topics (verifiziert)}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l l X @{}}
+\toprule
+\textbf{Topic} & \textbf{Typ} & \textbf{Richtung} & \textbf{Funktion} \\
+\midrule
+\topic{/cmd\_vel} & \texttt{geometry\_msgs/Twist} & Sub & Geschwindigkeitsbefehle \\
+\topic{/odom\_raw} & \texttt{geometry\_msgs/Pose2D} & Pub & Odometrie (\(x,y,\theta\)) \\
+\topic{/esp32/heartbeat} & \texttt{std\_msgs/Int32} & Pub & Lebenszeichen \\
+\topic{/esp32/led\_cmd} & \texttt{std\_msgs/Bool} & Sub & LED-Steuerung \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Hardware (Phase 1)}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l X X @{}}
+\toprule
+\textbf{Komponente} & \textbf{Spezifikation} & \textbf{Rolle} \\
+\midrule
+Seeed XIAO ESP32-S3 & Dual-Core Xtensa LX7, USB-CDC & micro-ROS Client + Control \\
+Cytron MDD3A & Dual-PWM, \(\SIrange{4}{16}{\volt}\) & Motortreiber \\
+JGA25-370 (2×) & \(\SI{12}{\volt}\) DC + Hall-Encoder & Antrieb + Odometrie \\
+Raspberry Pi 5 & ROS 2 Humble (Docker) & micro-ROS Agent + Host \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{Pin-Mapping}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l l X @{}}
+\toprule
+\textbf{Funktion} & \textbf{Pin} & \textbf{Typ} & \textbf{Hinweis} \\
+\midrule
+Motor Left A & \pin{D0} & PWM & \(\rightarrow\) PWM\_CH 1 (getauscht) \\
+Motor Left B & \pin{D1} & PWM & \(\rightarrow\) PWM\_CH 0 (getauscht) \\
+Motor Right A & \pin{D2} & PWM & \(\rightarrow\) PWM\_CH 3 (getauscht) \\
+Motor Right B & \pin{D3} & PWM & \(\rightarrow\) PWM\_CH 2 (getauscht) \\
+Encoder Left A & \pin{D6} & IRQ & A-only \\
+Encoder Right A & \pin{D7} & IRQ & A-only \\
+LED/MOSFET & \pin{D10} & GPIO & Status \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{tipbox}[Hinweis]
+Die PWM-Kanäle wurden getauscht (A\(\leftrightarrow\)B), um die korrekte Fahrtrichtung zu erreichen.
+\end{tipbox}
+
+\subsection{Firmware – Parameter (v3.2.0)}
+
+\subsubsection{config.h}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l X @{}}
+\toprule
+\textbf{Parameter} & \textbf{Wert} & \textbf{Beschreibung} \\
+\midrule
+\texttt{LOOP\_RATE\_HZ} & \(\SI{100}{\hertz}\) & Control-Zyklus (\(\SI{10}{\milli\second}\)) \\
+\texttt{ODOM\_PUBLISH\_HZ} & \(\SI{20}{\hertz}\) & Odom Publish (\(\SI{50}{\milli\second}\)) \\
+\texttt{FAILSAFE\_TIMEOUT\_MS} & \(\SI{2000}{\milli\second}\) & Heartbeat-Timeout \\
+\texttt{MOTOR\_PWM\_FREQ} & \(\SI{20}{\kilo\hertz}\) & PWM-Frequenz (unhörbar) \\
+\texttt{MOTOR\_PWM\_BITS} & \(\SI{8}{}\) & Auflösung (0–255) \\
+\texttt{PWM\_DEADZONE} & \(\SI{35}{}\) & Mindest-PWM \\
+\texttt{WHEEL\_DIAMETER} & \(\SI{0.065}{\meter}\) & Raddurchmesser \\
+\texttt{WHEEL\_BASE} & \(\SI{0.178}{\meter}\) & Spurbreite \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{PWM-Kanäle (getauscht für korrekte Richtung)}
+
+\begin{lstlisting}[style=arduino,caption={PWM-Channel Mapping (A/B getauscht)}]
+#define PWM_CH_LEFT_A  1  // war 0
+#define PWM_CH_LEFT_B  0  // war 1
+#define PWM_CH_RIGHT_A 3  // war 2
+#define PWM_CH_RIGHT_B 2  // war 3
+\end{lstlisting}
+
+\subsubsection{Regelung (Open-Loop mit Feedforward)}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l X @{}}
+\toprule
+\textbf{Parameter} & \textbf{Wert} & \textbf{Beschreibung} \\
+\midrule
+\texttt{PID\_KP} & \(\SI{0.0}{}\) & Deaktiviert \\
+\texttt{PID\_KI} & \(\SI{0.0}{}\) & Deaktiviert \\
+\texttt{PID\_KD} & \(\SI{0.0}{}\) & Deaktiviert \\
+\texttt{feedforward\_gain} & \(\SI{2.0}{}\) & Direkte Ansteuerung \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{warnbox}[Hinweis]
+PID wurde deaktiviert, da die Encoder-Polarität invertiert ist. Feedforward ermöglicht stabile Open-Loop-Steuerung. PID-Tuning ist sinnvoll ab Phase 4+, nachdem die Encoder-Richtungsheuristik validiert ist.
+\end{warnbox}
+
+\subsubsection{main.cpp – Feedforward-Berechnung}
+
+\begin{lstlisting}[style=arduino,caption={Feedforward + (optional) PID}]
+float feedforward_gain = 2.0f;
+float pwm_l = feedforward_gain * set_v_l + pid_left.compute(set_v_l, v_enc_l, dt);
+float pwm_r = feedforward_gain * set_v_r + pid_right.compute(set_v_r, v_enc_r, dt);
+
+// Begrenzen auf PWM-Bereich
+pwm_l = constrain(pwm_l, -1.0f, 1.0f);
+pwm_r = constrain(pwm_r, -1.0f, 1.0f);
+\end{lstlisting}
+
+\subsection{Build/Flash/Monitor (PlatformIO)}
+
+\subsubsection{Firmware kompilieren und flashen (Mac)}
+
+\begin{lstlisting}[style=shell]
+cd ~/daten/start/IoT/AMR/amr-platform/firmware
+pio run -e seeed_xiao_esp32s3 -t upload
+\end{lstlisting}
+
+\subsubsection{Serial Monitor (Debug)}
+
+\begin{lstlisting}[style=shell]
+pio device monitor -b 921600
+\end{lstlisting}
+
+\subsection{Docker-Setup (Pi 5)}
+
+\subsubsection{docker-compose.yml (Auszug)}
+
+\begin{lstlisting}[style=shell]
+services:
+  microros_agent:
+    image: microros/micro-ros-agent:humble
+    container_name: amr_agent
+    network_mode: host
+    privileged: true
+    restart: always
+    command: serial --dev /dev/ttyACM0 -b 921600
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0
+
+  amr_dev:
+    build: .
+    container_name: amr_base
+    network_mode: host
+    privileged: true
+    volumes:
+      - ../ros2_ws:/root/ros2_ws
+    command: tail -f /dev/null
+\end{lstlisting}
+
+\subsubsection{Container starten}
+
+\begin{lstlisting}[style=shell]
+cd ~/amr-platform/docker
+docker compose up -d
+docker compose ps
+\end{lstlisting}
+
+\subsubsection{Agent-Logs prüfen}
+
+\begin{lstlisting}[style=shell]
+docker compose logs microros_agent --tail 10
+\end{lstlisting}
+
+\textbf{Erwartete Ausgabe:}
+\begin{lstlisting}[style=shell]
+amr_agent | [timestamp] info | TermiosAgentLinux.cpp | init | running... | fd: 3
+\end{lstlisting}
+
+\subsection{Smoke-Tests}
+
+\subsubsection{1) In Container gehen}
+
+\begin{lstlisting}[style=shell]
+docker compose exec amr_dev bash
+source /opt/ros/humble/setup.bash
+\end{lstlisting}
+
+\subsubsection{2) Topics prüfen}
+
+\begin{lstlisting}[style=shell]
+ros2 topic list
+\end{lstlisting}
+
+\textbf{Erwartung:}
+\begin{lstlisting}[style=shell]
+/cmd_vel
+/esp32/heartbeat
+/esp32/led_cmd
+/odom_raw
+/parameter_events
+/rosout
+\end{lstlisting}
+
+\subsubsection{3) Motor-Tests (Räder aufbocken!)}
+
+\begin{warnbox}[Sicherheit]
+Vor Motor-Tests Räder aufbocken: der Roboter darf nicht unkontrolliert losfahren.
+\end{warnbox}
+
+\begin{lstlisting}[style=shell,caption={Motor-Tests via \texttt{\detokenize{/cmd_vel}}}]
+# Vorwärts
+ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \
+  "{linear: {x: 0.15}, angular: {z: 0.0}}" -r 10
+
+# Rückwärts (Ctrl+C, dann:)
+ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \
+  "{linear: {x: -0.15}, angular: {z: 0.0}}" -r 10
+
+# Drehen links
+ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \
+  "{linear: {x: 0.0}, angular: {z: 0.5}}" -r 10
+
+# Drehen rechts
+ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \
+  "{linear: {x: 0.0}, angular: {z: -0.5}}" -r 10
+\end{lstlisting}
+
+\subsubsection{4) Failsafe-Test}
+
+\begin{enumerate}
+  \item Motor-Befehl senden (Räder drehen)
+  \item \texttt{Ctrl+C} drücken
+  \item \(\SI{2}{\second}\) warten
+  \item \textbf{Erwartung:} Motoren stoppen automatisch
+\end{enumerate}
+
+\subsubsection{5) Odometrie prüfen}
+
+\begin{lstlisting}[style=shell]
+ros2 topic echo /odom_raw --once
+\end{lstlisting}
+
+\subsection{Troubleshooting}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} X X X @{}}
+\toprule
+\textbf{Problem} & \textbf{Ursache} & \textbf{Lösung} \\
+\midrule
+\texttt{Serial port not found} & ESP32 nicht angeschlossen & USB-Kabel prüfen, \texttt{ls /dev/ttyACM*} \\
+Topics fehlen & Agent nicht verbunden & Agent-Logs prüfen, ESP32 Reset \\
+Räder drehen falsche Richtung & PWM-Kanäle falsch & A\(\leftrightarrow\)B tauschen in \texttt{config.h} \\
+Motor reagiert nicht & Feedforward zu niedrig & \texttt{feedforward\_gain} erhöhen \\
+PID eskaliert & Encoder-Polarität invertiert & PID deaktivieren (\(\texttt{Kp}=0\)) \\
+Failsafe greift nicht & Timeout zu kurz & \texttt{FAILSAFE\_TIMEOUT\_MS} erhöhen \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Bekannte Einschränkungen}
+
+\begin{enumerate}
+  \item \textbf{Open-Loop-Steuerung:} PID deaktiviert, keine Geschwindigkeitsregelung.
+  \item \textbf{Encoder A-only:} Richtung wird aus Soll-Geschwindigkeit abgeleitet.
+  \item \textbf{Odom-Rate:} effektiv \(\approx \SIrange{3}{6}{\hertz}\) durch Serial-Transport.
+\end{enumerate}
+
+\subsection{Nächste Schritte}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l X l @{}}
+\toprule
+\textbf{Phase} & \textbf{Beschreibung} & \textbf{Status} \\
+\midrule
+Phase 1 & micro-ROS ESP32-S3 & abgeschlossen \\
+Phase 2 & Docker-Infrastruktur & vorhanden \\
+Phase 3 & RPLidar A1 Integration (\filep{/dev/ttyUSB0}) & bereit \\
+Phase 4 & EKF Sensor Fusion & offen \\
+Phase 5 & SLAM (\texttt{slam\_toolbox}) & offen \\
+Phase 6 & Nav2 autonome Navigation & offen \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Changelog}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l X @{}}
+\toprule
+\textbf{Version} & \textbf{Datum} & \textbf{Änderungen} \\
+\midrule
+v1.0 & 2025-12-19 & Initiale Dokumentation \\
+v3.1.0 & 2025-12-20 & PID aktiviert, Baudrate \(\SI{921600}{\baud}\) \\
+v3.2.0 & 2025-12-20 & PWM-Kanäle getauscht, Feedforward (Gain=\(\SI{2.0}{}\)), PID deaktiviert, alle Tests bestanden \\
+\bottomrule
+\end{tabularx}
+\end{table}

@@ -1,0 +1,209 @@
+% =============================================================================
+% Phase 1 – Befehlsreferenz
+% (Fragment ohne Präambel; setzt Listings/Boxen-Stile aus main.tex voraus)
+% =============================================================================
+
+\section{Phase 1 – Befehlsreferenz}
+\label{sec:phase1-befehle}
+
+\begin{infobox}[Zweck]
+Schnelle Befehls-Sammlung für Phase~1 (micro-ROS Agent im Docker auf dem Pi, ESP32 per USB-Serial).
+Arbeitsverzeichnis: \filep{\textasciitilde/amr-platform/docker}.
+\end{infobox}
+
+\subsection{Nach Pi Reboot}
+
+\begin{lstlisting}[style=shell]
+cd ~/amr-platform/docker
+docker compose up -d
+sleep 5
+docker compose logs microros_agent --tail 5
+\end{lstlisting}
+
+\begin{cmdbox}[Erwartung]
+\ttfamily running... \textbar\ fd: 3
+\end{cmdbox}
+
+\subsection{Nach ESP32 Reboot (USB umgesteckt)}
+
+\begin{lstlisting}[style=shell]
+cd ~/amr-platform/docker
+docker compose restart microros_agent
+sleep 5
+docker compose logs microros_agent --tail 5
+\end{lstlisting}
+
+\begin{cmdbox}[Erwartung]
+\ttfamily running... \textbar\ fd: 3
+\end{cmdbox}
+
+\subsection{Notfall-Stop (falls Räder drehen)}
+
+\begin{warnbox}[Sicherheit]
+Wenn sich der Rover unkontrolliert bewegt: \emph{sofort} Stop senden. Bei Motor-Tests Räder aufbocken.
+\end{warnbox}
+
+\begin{lstlisting}[style=shell]
+docker compose exec amr_dev bash -c "source /opt/ros/humble/setup.bash && \
+  ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0}, angular: {z: 0.0}}'"
+\end{lstlisting}
+
+\subsection{Smoke-Tests}
+
+\subsubsection{1. In Container gehen}
+
+\begin{lstlisting}[style=shell]
+docker compose exec amr_dev bash
+source /opt/ros/humble/setup.bash
+\end{lstlisting}
+
+\subsubsection{2. Topics prüfen}
+
+\begin{lstlisting}[style=shell]
+ros2 topic list
+\end{lstlisting}
+
+\begin{cmdbox}[Erwartung]
+\ttfamily
+/cmd\_vel\\
+/esp32/heartbeat\\
+/esp32/led\_cmd\\
+/odom\_raw\\
+/parameter\_events\\
+/rosout
+\end{cmdbox}
+
+\subsubsection{3. Heartbeat prüfen}
+
+\begin{lstlisting}[style=shell]
+ros2 topic echo /esp32/heartbeat
+\end{lstlisting}
+
+\begin{tipbox}[Erwartung]
+Counter inkrementiert ca. $1\times/\mathrm{s}$ (mit \texttt{Ctrl+C} beenden).
+\end{tipbox}
+
+\subsubsection{4. Odometrie prüfen}
+
+\begin{lstlisting}[style=shell]
+ros2 topic echo /odom_raw --once
+\end{lstlisting}
+
+\begin{tipbox}[Erwartung]
+Ausgabe enthält plausible \texttt{x}, \texttt{y}, \texttt{theta} Werte.
+\end{tipbox}
+
+\subsubsection{5. Frequenzen messen}
+
+\begin{lstlisting}[style=shell]
+ros2 topic hz /esp32/heartbeat
+\end{lstlisting}
+
+\begin{lstlisting}[style=shell]
+ros2 topic hz /odom_raw
+\end{lstlisting}
+
+\begin{tipbox}[Erwartung]
+Heartbeat $\approx \SI{1}{\hertz}$, Odom $\approx \SIrange{3}{6}{\hertz}$.
+\end{tipbox}
+
+\subsection{Motor-Tests}
+
+\begin{warnbox}[Sicherheit]
+Räder aufbocken (kein Bodenkontakt). Notfall-Stop bereithalten.
+\end{warnbox}
+
+\subsubsection{Vorwärts}
+
+\begin{lstlisting}[style=shell]
+ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \
+  "{linear: {x: 0.15}, angular: {z: 0.0}}" -r 10
+\end{lstlisting}
+
+\subsubsection{Rückwärts}
+
+\begin{lstlisting}[style=shell]
+ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \
+  "{linear: {x: -0.15}, angular: {z: 0.0}}" -r 10
+\end{lstlisting}
+
+\subsubsection{Drehen links}
+
+\begin{lstlisting}[style=shell]
+ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \
+  "{linear: {x: 0.0}, angular: {z: 0.5}}" -r 10
+\end{lstlisting}
+
+\subsubsection{Drehen rechts}
+
+\begin{lstlisting}[style=shell]
+ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \
+  "{linear: {x: 0.0}, angular: {z: -0.5}}" -r 10
+\end{lstlisting}
+
+\subsubsection{Manueller Stop}
+
+\begin{lstlisting}[style=shell]
+ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist \
+  "{linear: {x: 0.0}, angular: {z: 0.0}}"
+\end{lstlisting}
+
+\begin{tipbox}[Hinweis]
+Nach \texttt{Ctrl+C} stoppt der Failsafe die Motoren automatisch nach ca. \SI{2}{\second}.
+\end{tipbox}
+
+\subsection{Failsafe-Test}
+
+\begin{enumerate}
+  \item Motor-Befehl senden (Räder drehen).
+  \item \texttt{Ctrl+C} drücken.
+  \item \SI{2}{\second} warten.
+  \item \textbf{Erwartung:} Motoren stoppen automatisch.
+\end{enumerate}
+
+\subsection{Odom nach Fahrt prüfen}
+
+\begin{lstlisting}[style=shell]
+ros2 topic echo /odom_raw --once
+\end{lstlisting}
+
+\begin{tipbox}[Erwartung]
+Nach Vorwärtsfahrt: \texttt{x} $> 0$. Nach Drehung: \texttt{theta} ändert sich.
+\end{tipbox}
+
+\subsection{Checkliste Phase 1}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{}lXc@{}}
+\toprule
+\textbf{Test} & \textbf{Erwartung} & \textbf{Status} \\
+\midrule
+Agent verbindet & \texttt{fd: 3} & $\square$ \\
+Topics vorhanden & 6 Topics & $\square$ \\
+Heartbeat & $\approx \SI{1}{\hertz}$ & $\square$ \\
+Odom publiziert & \texttt{x, y, theta} Werte & $\square$ \\
+Vorwärts & Räder drehen vorwärts & $\square$ \\
+Rückwärts & Räder drehen rückwärts & $\square$ \\
+Drehen links & Roboter dreht links & $\square$ \\
+Drehen rechts & Roboter dreht rechts & $\square$ \\
+Failsafe & Stop nach \SI{2}{\second} & $\square$ \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Troubleshooting}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Problem} & \textbf{Lösung} \\
+\midrule
+\texttt{Serial port not found} & USB-Kabel prüfen, \texttt{ls /dev/ttyACM*} \\
+Topics fehlen & \texttt{docker compose restart microros\_agent} \\
+Räder reagieren nicht & Feedforward-Gain prüfen (2.0) \\
+Falsches Verhalten & USB ziehen, Firmware prüfen \\
+\bottomrule
+\end{tabularx}
+\end{table}

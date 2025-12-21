@@ -1,0 +1,412 @@
+% =====================================================================
+% AMR Implementierungsplan – Vom Schaltplan zur autonomen Navigation
+% Fragment ohne Präambel (setzt Styles/Makros aus main.tex voraus)
+% Version: 2.0 | Stand: 2025-12-20 | Firmware: v3.2.0
+% =====================================================================
+
+\section{AMR Implementierungsplan}
+\label{sec:amr-implementierungsplan}
+
+\begin{infobox}[Meta]
+\begin{itemize}
+  \item Version: \textbf{2.0}
+  \item Stand: \textbf{2025-12-20}
+  \item Firmware: \textbf{v3.2.0}
+\end{itemize}
+\end{infobox}
+
+\subsection{Grundprinzip: Vertikale Scheiben statt horizontaler Schichten}
+
+Ein häufiger Fehler bei Robotik-Projekten ist ein \emph{Big-Bang-Integrationsversuch}: zuerst komplette Hardware, dann komplette Firmware, dann komplette Treiber --- und beim ersten Integrationstest ist alles gleichzeitig neu. Fehlersuche wird dann unverhältnismäßig teuer.
+
+\textbf{Ansatz:} System in \emph{vertikale Scheiben} schneiden. Jede Phase liefert ein lauffähiges, testbares Teilsystem, bevor die nächste Komplexitätsstufe hinzukommt.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.92\textwidth]{images/Grundprinzip.png}
+  \caption{Grundprinzip „vertikale Scheiben“: Statt Hardware, Firmware, Wahrnehmung und Navigation separat „fertig“ zu bauen und erst am Ende im Big-Bang-Test zu integrieren, wird das System phasenweise als lauffähiger End-to-End-Strang erweitert. Jede Phase liefert ein testbares Teilsystem (z.\,B. Phase~1: micro-ROS + Motorsteuerung, Phase~2: Docker/ROS-Tooling, Phase~3: LiDAR-Scan), bevor mit EKF/Sensorfusion, SLAM und Nav2 die nächste Komplexitätsstufe hinzukommt.}
+  \label{fig:grundprinzip-vertikale-scheiben}
+\end{figure}
+
+
+\subsection{Phasen-Übersicht}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l X l @{}}
+\toprule
+\textbf{Phase} & \textbf{Beschreibung} & \textbf{Status} \\
+\midrule
+Phase 1 & micro-ROS auf ESP32-S3 (USB-Serial) & \(\checkmark\) Abgeschlossen \\
+Phase 2 & Docker-Infrastruktur & \(\checkmark\) Vorhanden \\
+Phase 3 & RPLidar A1 Integration & \textbf{AKTUELL} \\
+Phase 4 & EKF Sensor Fusion & \(\square\) \\
+Phase 5 & SLAM (\texttt{slam\_toolbox}) & \(\square\) \\
+Phase 6 & Nav2 Autonome Navigation & \(\square\) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ---------------------------------------------------------------------
+\subsection{Phase 1: micro-ROS auf ESP32-S3}
+\label{subsec:amr-phase1}
+
+\textbf{Ziel:} Native ROS~2 Kommunikation über USB-Serial mit Dual-Core FreeRTOS Architektur.
+
+\textbf{Status:} \(\checkmark\) Abgeschlossen (2025-12-20) \textbar\ Firmware \textbf{v3.2.0}
+
+\subsubsection{Architektur (Kurz)}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.92\textwidth]{images/Architektur.png}
+  \caption{Phase-1-Architektur (micro-ROS über USB-Serial): Der ESP32-S3 arbeitet als micro-ROS-Client und führt auf Core~0 die Regel-/Odometrie-Schleife (\(\SI{100}{\hertz}\)) inkl. Failsafe (\(\SI{2}{\second}\) Timeout) aus, während Core~1 die micro-ROS-Kommunikation bedient. Über USB-CDC bei \(\SI{921600}{\baud}\) ist der Raspberry~Pi~5 (Docker) mit dem \texttt{micro-ros-agent} verbunden; im ROS~2-Workspace werden Topics wie \topic{/cmd\_vel} (Motorsteuerung) und \topic{/odom\_raw} (Pose2D) getestet/überwacht.}
+  \label{fig:architektur}
+\end{figure}
+
+\subsubsection{Topics}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l l X @{}}
+\toprule
+\textbf{Topic} & \textbf{Typ} & \textbf{Richtung} & \textbf{Beschreibung} \\
+\midrule
+\topic{/cmd\_vel} & \texttt{geometry\_msgs/Twist} & Sub & Geschwindigkeitsbefehle \\
+\topic{/odom\_raw} & \texttt{geometry\_msgs/Pose2D} & Pub & Odometrie (\(x,y,\theta\)) \\
+\topic{/esp32/heartbeat} & \texttt{std\_msgs/Int32} & Pub & Lebenszeichen \\
+\topic{/esp32/led\_cmd} & \texttt{std\_msgs/Bool} & Sub & LED-Steuerung \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{Konfiguration (Kernwerte)}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l X @{}}
+\toprule
+\textbf{Parameter} & \textbf{Wert} \\
+\midrule
+Baudrate & \(921600\,\mathrm{Bd}\) \\
+Feedforward Gain & \(2.0\) \\
+PID & deaktiviert (\(K_p = 0\)) \\
+Failsafe Timeout & \(2000\,\mathrm{ms}\) \\
+PWM-Kanäle & getauscht (A\(\leftrightarrow\)B) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{Testergebnisse}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l c @{}}
+\toprule
+\textbf{Test} & \textbf{Status} \\
+\midrule
+Vorwärts & \(\checkmark\) \\
+Rückwärts & \(\checkmark\) \\
+Drehen links & \(\checkmark\) \\
+Drehen rechts & \(\checkmark\) \\
+Failsafe (2\,s) & \(\checkmark\) \\
+Odom plausibel & \(\checkmark\) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{Cytron MDD3A – Dual-PWM (kritisch)}
+\begin{warnbox}[Kritisch]
+Der MDD3A verwendet \textbf{keinen} DIR-Pin, sondern \textbf{zwei PWM-Signale pro Motor}.
+\end{warnbox}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} r r X @{}}
+\toprule
+\textbf{M1A (PWM)} & \textbf{M1B (PWM)} & \textbf{Ergebnis} \\
+\midrule
+200 & 0 & Vorwärts \\
+0 & 200 & Rückwärts \\
+0 & 0 & Coast (Auslaufen) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ---------------------------------------------------------------------
+\subsection{Phase 2: Docker-Infrastruktur}
+\label{subsec:amr-phase2}
+
+\textbf{Ziel:} Container-basierte ROS~2 Umgebung für einfaches Deployment.
+
+\textbf{Status:} \(\checkmark\) Vorhanden
+
+\subsubsection{Container}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l X @{}}
+\toprule
+\textbf{Container} & \textbf{Image} & \textbf{Funktion} \\
+\midrule
+\texttt{amr\_agent} & \texttt{microros/micro-ros-agent:humble} & Serial Agent \\
+\texttt{amr\_dev} & Custom (ROS 2 Humble) & Workspace \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{docker-compose.yml (Auszug)}
+\begin{lstlisting}[style=shell]
+services:
+  microros_agent:
+    image: microros/micro-ros-agent:humble
+    container_name: amr_agent
+    network_mode: host
+    privileged: true
+    restart: always
+    command: serial --dev /dev/ttyACM0 -b 921600
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0
+
+  amr_dev:
+    build: .
+    container_name: amr_base
+    network_mode: host
+    privileged: true
+    volumes:
+      - ../ros2_ws:/root/ros2_ws
+    command: tail -f /dev/null
+\end{lstlisting}
+
+\subsubsection{Quick Start}
+\begin{lstlisting}[style=shell]
+cd ~/amr-platform/docker
+docker compose up -d
+docker compose exec amr_dev bash
+source /opt/ros/humble/setup.bash
+ros2 topic list
+\end{lstlisting}
+
+% ---------------------------------------------------------------------
+\subsection{Phase 3: RPLidar A1 Integration}
+\label{subsec:amr-phase3}
+
+\textbf{Ziel:} \(360^\circ\) Laserscan für Umgebungswahrnehmung.
+
+\textbf{Status:} aktuell (Port \filep{/dev/ttyUSB0} erkannt)
+
+\subsubsection{Hardware}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l l @{}}
+\toprule
+\textbf{Komponente} & \textbf{Port} & \textbf{Status} \\
+\midrule
+RPLidar A1 & \filep{/dev/ttyUSB0} & \(\checkmark\) erkannt \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{Aufgaben}
+\begin{itemize}[label=\(\square\)]
+  \item \texttt{rplidar\_ros} Package installieren
+  \item Launch-File erstellen
+  \item \topic{/scan} verifizieren
+  \item TF: \texttt{laser} \(\rightarrow\) \texttt{base\_link}
+  \item RViz2 Visualisierung
+\end{itemize}
+
+\subsubsection{Geplante Topics}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l X @{}}
+\toprule
+\textbf{Topic} & \textbf{Typ} & \textbf{Frequenz} \\
+\midrule
+\topic{/scan} & \texttt{sensor\_msgs/LaserScan} & \(\SIrange{5}{10}{\hertz}\) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{Launch (geplant)}
+\begin{lstlisting}[style=shell]
+ros2 launch rplidar_ros rplidar_a1_launch.py
+\end{lstlisting}
+
+\textbf{Meilenstein Phase 3:} \topic{/scan} publiziert, Daten in RViz2 sichtbar.
+
+% ---------------------------------------------------------------------
+\subsection{Phase 4: EKF Sensor Fusion}
+\label{subsec:amr-phase4}
+
+\textbf{Ziel:} Robuste Odometrie durch Fusion von Encoder-Daten (später + IMU).
+
+\subsubsection{Aufgaben}
+\begin{itemize}[label=\(\square\)]
+  \item \texttt{robot\_localization} Package
+  \item EKF Node konfigurieren
+  \item \topic{/odom\_raw} \(\rightarrow\) \topic{/odometry/filtered}
+  \item TF: \texttt{odom} \(\rightarrow\) \texttt{base\_link}
+  \item Optional: IMU Integration (MPU6050)
+\end{itemize}
+
+\subsubsection{Geplante Topics}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l l X @{}}
+\toprule
+\textbf{Topic} & \textbf{Typ} & \textbf{Quelle} \\
+\midrule
+\topic{/odometry/filtered} & \texttt{nav\_msgs/Odometry} & EKF \\
+\topic{/tf} & \texttt{tf2\_msgs/TFMessage} & EKF \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Meilenstein Phase 4:} TF-Baum korrekt, gefilterte Odometrie stabil.
+
+% ---------------------------------------------------------------------
+\subsection{Phase 5: SLAM (slam\_toolbox)}
+\label{subsec:amr-phase5}
+
+\textbf{Ziel:} Der Roboter baut eine Karte seiner Umgebung.
+
+\subsubsection{Aufgaben}
+\begin{itemize}[label=\(\square\)]
+  \item \texttt{slam\_toolbox} konfigurieren
+  \item Online Async SLAM
+  \item Testraum kartieren
+  \item Karte speichern (PGM + YAML)
+\end{itemize}
+
+\subsubsection{Launch}
+\begin{lstlisting}[style=shell]
+ros2 launch slam_toolbox online_async_launch.py params_file:=slam_params.yaml
+\end{lstlisting}
+
+\textbf{Meilenstein Phase 5:} Eine speicherbare Karte des Testraums existiert.
+
+% ---------------------------------------------------------------------
+\subsection{Phase 6: Nav2 Autonome Navigation}
+\label{subsec:amr-phase6}
+
+\textbf{Ziel:} Ziel auf Karte setzen, Roboter fährt autonom hin.
+
+\subsubsection{Nav2 Stack (Überblick)}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l X @{}}
+\toprule
+\textbf{Komponente} & \textbf{Funktion} \\
+\midrule
+AMCL & Lokalisierung auf bekannter Karte \\
+Planner Server & Globaler Pfad (A* / Dijkstra) \\
+Controller Server & Lokale Hindernisvermeidung \\
+Costmap & Hinderniskarte aus Sensordaten \\
+BT Navigator & Verhaltenssteuerung \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Meilenstein Phase 6:} Roboter navigiert autonom, weicht Hindernissen aus.
+
+% ---------------------------------------------------------------------
+\subsection{Zukünftige Erweiterungen (optional)}
+
+\subsubsection{Kamera \& AI}
+\begin{itemize}
+  \item IMX296 Global Shutter Kamera
+  \item YOLOv8 auf Hailo-8L
+  \item Personen-Erkennung \(\rightarrow\) Stopp-Verhalten
+\end{itemize}
+
+\subsubsection{PID-Regelung}
+Aktuell: Feedforward (Open-Loop). Für präzisere Regelung:
+\begin{itemize}
+  \item Encoder-Polarität korrigieren (Quadratur-Encoder oder Richtungs-Heuristik verbessern)
+  \item PID aktivieren (Beispielwerte aus früheren Tests: \(K_p=13.0\), \(K_i=5.0\), \(K_d=0.01\))
+\end{itemize}
+
+% ---------------------------------------------------------------------
+\subsection{Hardware-Übersicht}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} l X l @{}}
+\toprule
+\textbf{Komponente} & \textbf{Spezifikation} & \textbf{Status} \\
+\midrule
+Seeed XIAO ESP32-S3 & Dual-Core, USB-CDC & aktiv \\
+Cytron MDD3A & Dual-PWM, \(\SIrange{4}{16}{\volt}\) & aktiv \\
+JGA25-370 (2×) & \(\SI{12}{\volt}\) DC + Encoder & aktiv \\
+Raspberry Pi 5 & 8\,GB, ROS~2 Humble & aktiv \\
+RPLidar A1 & \(360^\circ\) 2D Lidar & erkannt \\
+Hailo-8L & AI Accelerator & später \\
+IMX296 & Global Shutter & später \\
+MPU6050 & IMU (I\textsuperscript{2}C) & später \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ---------------------------------------------------------------------
+\subsection{Risikomatrix}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{@{} X l l X @{}}
+\toprule
+\textbf{Risiko} & \textbf{Wahrscheinlichkeit} & \textbf{Impact} & \textbf{Status} \\
+\midrule
+micro-ROS inkompatibel & früher hoch & hoch & \(\checkmark\) gelöst \\
+MDD3A-Ansteuerung & früher hoch & hoch & \(\checkmark\) Dual-PWM geklärt \\
+PID-Eskalation & früher mittel & mittel & \(\checkmark\) Feedforward \\
+Motor-Richtung falsch & früher mittel & mittel & \(\checkmark\) PWM getauscht \\
+Failsafe greift zu früh & früher mittel & niedrig & \(\checkmark\) \(2000\,\mathrm{ms}\) \\
+RPLidar-Treiber & niedrig & mittel & Phase 3 \\
+Nav2-Tuning aufwändig & hoch & mittel & Zeit einplanen \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ---------------------------------------------------------------------
+\subsection{Zeitplan (8 Wochen, grob)}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.92\textwidth]{images/Zeitplan.png}
+  \caption{Grobzeitplan über 8~Wochen: Die Roadmap ist in aufeinander aufbauende Phasen mit je ca. 2~Wochen Fokuszeit gegliedert. Phase~1 (micro-ROS) und Phase~2 (Docker/ROS-Tooling) sind abgeschlossen; Phase~3 (RPLidar: Scan-Erfassung und Stabilisierung) ist aktuell. Danach folgen Phase~4 (EKF/Sensorfusion), Phase~5 (SLAM: Karte + Lokalisierung) und Phase~6 (Nav2: Pfadplanung und autonome Navigation).}
+  \label{fig:zeitplan-8wochen}
+\end{figure}
+
+% ---------------------------------------------------------------------
+\subsection{Checkliste pro Phase}
+
+Jede Phase ist erst abgeschlossen, wenn:
+\begin{itemize}[label=\(\checkmark\)]
+  \item die definierten Tests bestanden sind
+  \item der Code committet und dokumentiert ist
+  \item die Konfigurationsdateien versioniert sind
+  \item ein kurzes Protokoll die Ergebnisse festhält
+  \item der nächste Schritt klar ist
+\end{itemize}
+
+\textbf{Phase 1:} \(\checkmark\) alle Punkte erfüllt (2025-12-20) \\
+\textbf{Phase 2:} \(\checkmark\) alle Punkte erfüllt
+
+% ---------------------------------------------------------------------
+\subsection{Changelog}
+
+\subsubsection{v2.0 (2025-12-20)}
+\begin{itemize}
+  \item Phase 1: micro-ROS statt Serial-Bridge
+  \item Firmware: v3.2.0 mit Feedforward
+  \item Architektur: Dual-Core FreeRTOS
+  \item Docker: Container-basiertes Deployment
+  \item Phasen: reorganisiert (6 statt 7)
+\end{itemize}
+
+\subsubsection{v1.3 (2025-12-12)}
+\begin{itemize}
+  \item Phase 2 (Odometrie + PID) abgeschlossen
+  \item Serial-Bridge Architektur (Legacy)
+\end{itemize}
+
+\begin{tipbox}[Merksatz]
+Lieber weniger Features, die funktionieren, als viele Features, die zusammen crashen.
+\end{tipbox}

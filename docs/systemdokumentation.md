@@ -1,347 +1,235 @@
-# Systemdokumentation: AMR Low-Level Controller
+# Systemdokumentation – AMR Low-Level Controller (ESP32-S3 Drivebase)
 
-**Version:** 3.2.0 | **Datum:** 20.12.2025 | **Status:** ✅ Phase 1 abgeschlossen
-
----
-
-## 1. Architektur-Übersicht
-
-Das System implementiert eine **Hybrid-Echtzeit-Architektur**. Harte Echtzeit-Anforderungen (Motorregelung) werden strikt von Kommunikations-Aufgaben (micro-ROS) getrennt durch Dual-Core-Nutzung des ESP32-S3.
-
-### 1.1 Datenfluss-Diagramm
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  ESP32-S3 (micro-ROS Client) - Firmware v3.2.0              │
-│                                                             │
-│  Core 0: Control Task (100 Hz)                              │
-│    - Feedforward-Steuerung (Gain=2.0)                       │
-│    - Encoder-Auswertung (ISR)                               │
-│    - Odometrie-Integration                                  │
-│    - Failsafe-Check (2000ms Timeout)                        │
-│                                                             │
-│  Core 1: Communication (micro-ROS)                          │
-│    - Executor Spin                                          │
-│    - Odom Publish @ 20 Hz                                   │
-│    - Heartbeat Publish @ 1 Hz                               │
-│                                                             │
-│  Shared Memory: Mutex-geschützt                             │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                      USB-CDC (921600 Baud)
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Raspberry Pi 5 (Docker)                                    │
-│                                                             │
-│  Container: amr_agent                                       │
-│    - micro-ros-agent serial --dev /dev/ttyACM0 -b 921600   │
-│                                                             │
-│  Container: amr_dev                                         │
-│    - ROS 2 Humble Workspace                                 │
-│    - ros2 topic pub/echo/hz                                 │
-└─────────────────────────────────────────────────────────────┘
-```
+**System-ID:** AMR-LLC (Low-Level Controller)
+**Version:** 3.2.0
+**Datum:** 2025-12-20
+**Systemstatus:** Phase 1–3 funktionsfähig, Phase 4 folgt (URDF/TF/EKF)
 
 ---
 
-## 2. Firmware-Architektur (Dual-Core)
+## Ziel dieser Systemdokumentation
 
-Die Firmware nutzt das **FreeRTOS** Betriebssystem des ESP32-S3, um zwei parallele Tasks auf den physischen CPU-Kernen auszuführen.
+1. **Systemverständnis** herzustellen
+   - Zweck, Systemgrenzen, Betriebsarten, Annahmen und Abhängigkeiten sind eindeutig definiert.
 
-### 2.1 Core 0: Das "Rückenmark" (Hard Real-Time)
+2. **Schnittstellen eindeutig festzulegen**
+   - Externe Schnittstellen (ROS-Topics, Datenbedeutung, Frequenzen) sind so beschrieben, dass nachgelagerte Systeme (URDF/TF/EKF/SLAM/Nav2) konsistent integrieren können.
 
-| Eigenschaft | Wert |
-|-------------|------|
-| Task Name | `controlTask` |
-| Frequenz | 100 Hz (Deterministisch via `vTaskDelayUntil`) |
-| Priorität | Hoch (`configMAX_PRIORITIES - 1`) |
+3. **Sicherheits- und Fail-safe-Verhalten nachvollziehbar zu machen**
+   - Welche Ereignisse zu welchem sicheren Zustand führen (z. B. Timeout → Motorstopp) ist klar dokumentiert.
 
-**Aufgaben:**
+4. **Nachweisbarkeit zu ermöglichen**
+   - Verifikationspunkte beschreiben, *was* am System geprüft wird und *welches Verhalten* als bestanden gilt (ohne Build/Flash-Anleitung).
 
-1. Encoder-Interrupts auslesen (Atomar)
-2. Odometrie integrieren (x, y, θ)
-3. **Feedforward-Steuerung** berechnen (Gain=2.0)
-4. **Safety-Check:** Heartbeat-Timeout (2000ms) → Not-Halt
+## 1. Zweck, Systemgrenzen, Annahmen
 
-### 2.2 Core 1: Das "Gehirn" (Communication)
+### 1.1 Zweck
 
-| Eigenschaft | Wert |
-|-------------|------|
-| Task | `loop()` (Arduino Standard) |
-| Odom Publish | 20 Hz |
-| Heartbeat | 1 Hz |
+Der AMR-LLC steuert die Drivebase (Motoren) und stellt eine ROS-2-kompatible Low-Level-Schnittstelle bereit. Er wandelt Geschwindigkeitsbefehle in Motorausgänge um und liefert Odometrie als Basis für spätere Lokalisierung und Navigation.
 
-**Aufgaben:**
+### 1.2 Systemgrenzen (Scope)
 
-1. micro-ROS Executor Spin (Datenempfang/Versand)
-2. Serialisierung der DDS-Nachrichten
-3. I2C-Kommunikation (Zukunft: IMU)
+**Im System (AMR-LLC + Host-Integration):**
 
-**Datenaustausch:** Über `SharedData` Struct, geschützt durch **Mutex** (Semaphore).
+- Motoransteuerung (Dual-PWM)
+- Encoder-Erfassung (A-only)
+- Odometrie-Integration (Pose2D)
+- Failsafe bei Kommunikationsausfall
+- micro-ROS Transport via USB-CDC
+- Host-Seite: micro-ROS Agent im Docker (Pi 5)
 
-### 2.3 Steuerungslogik
+**Außerhalb des Systems (nicht Bestandteil dieser Version):**
 
-```cpp
-// Feedforward + PID (PID aktuell deaktiviert)
-float feedforward_gain = 2.0f;
-float pwm_l = feedforward_gain * set_v_l + pid_left.compute(set_v_l, v_enc_l, dt);
-float pwm_r = feedforward_gain * set_v_r + pid_right.compute(set_v_r, v_enc_r, dt);
+- URDF/robot_state_publisher
+- TF-Baum nach REP-105 (map/odom/base_*)
+- EKF (robot_localization)
+- SLAM / Nav2
 
-// Begrenzen auf PWM-Bereich
-pwm_l = constrain(pwm_l, -1.0f, 1.0f);
-pwm_r = constrain(pwm_r, -1.0f, 1.0f);
-```
+### 1.3 Annahmen
 
-**Hinweis:** PID ist deaktiviert (Kp=Ki=Kd=0), da die Encoder-Polarität invertiert ist. Feedforward ermöglicht stabile Open-Loop-Steuerung.
+- Host (Pi 5) stellt micro-ROS Agent bereit und sendet `/cmd_vel` regelmäßig.
+- Mechanik ist differential drive (2 angetriebene Räder).
+- Sicherheitsfunktion „Timeout → Stop“ ist lokal (ESP32) wirksam, unabhängig vom Hostzustand.
 
 ---
 
-## 3. ROS 2 Schnittstelle (API)
+## 2. Systemkontext und Datenflüsse
 
-### 3.1 Topics
+### 2.1 Komponenten
 
-| Topic | Typ | Richtung | Frequenz | QoS | Beschreibung |
-|-------|-----|----------|----------|-----|--------------|
-| `/cmd_vel` | `geometry_msgs/Twist` | Sub | - | Reliable | Geschwindigkeitsbefehle |
-| `/odom_raw` | `geometry_msgs/Pose2D` | Pub | 20 Hz | Best Effort | Odometrie (x, y, theta) |
-| `/esp32/heartbeat` | `std_msgs/Int32` | Pub | 1 Hz | Best Effort | Lebenszeichen |
-| `/esp32/led_cmd` | `std_msgs/Bool` | Sub | - | Reliable | LED/MOSFET Steuerung |
+- **ESP32-S3**: Echtzeitnahe Drivebase-Steuerung + micro-ROS Client
+- **Motortreiber**: Cytron MDD3A (Dual-PWM)
+- **Motoren**: JGA25-370 mit Hall-Encoder
+- **Raspberry Pi 5**: Docker-Host (micro-ROS Agent + ROS 2 Tools)
 
-### 3.2 Nachrichtenformate
+### 2.2 Datenfluss (logisch)
 
-**cmd_vel (Input):**
-
-```yaml
-linear:
-  x: 0.15    # [m/s] Vorwärts (+) / Rückwärts (-)
-  y: 0.0     # Nicht verwendet
-  z: 0.0     # Nicht verwendet
-angular:
-  x: 0.0     # Nicht verwendet
-  y: 0.0     # Nicht verwendet
-  z: 0.5     # [rad/s] Links (+) / Rechts (-)
 ```
 
-**odom_raw (Output):**
+ROS 2 /cmd_vel  ──►  Pi 5 (micro-ROS Agent)  ──USB-CDC──►  ESP32-S3 (micro-ROS Client)
+│
+├─► Motor PWM (links/rechts)
+└─► /odom_raw, /esp32/heartbeat  ──► zurück zum ROS 2 System
 
-```yaml
-x: 0.899     # [m] Position X
-y: -0.329    # [m] Position Y
-theta: 6.09  # [rad] Orientierung
 ```
+
+### 2.3 Betriebsarten (operativ)
+
+- **Bench Mode (Werkbank):** Räder entlastet/aufgebockt, Funktionsnachweis.
+- **Drive Mode (Boden):** Niedrige Geschwindigkeit, kontrollierte Tests.
+- **Fault Mode:** Timeout oder Fehler → Motoren aus.
 
 ---
 
-## 4. Konfiguration & Parameter
+## 3. Funktionale Anforderungen (Systemverhalten)
 
-### 4.1 config.h
+### 3.1 Motion Control (Soll → Stellgröße)
 
-| Parameter | Wert | Beschreibung |
-|-----------|------|--------------|
-| `LOOP_RATE_HZ` | 100 | Control-Zyklus (10 ms) |
-| `ODOM_PUBLISH_HZ` | 20 | Odom Publish (50 ms) |
-| `FAILSAFE_TIMEOUT_MS` | **2000** | Heartbeat-Timeout |
-| `MOTOR_PWM_FREQ` | 20000 | 20 kHz (unhörbar) |
-| `MOTOR_PWM_BITS` | 8 | 0-255 Auflösung |
+- Eingabe: `/cmd_vel` (linear.x, angular.z)
+- Ausgabe: PWM links/rechts (begrenzter Wertebereich, Deadzone berücksichtigt)
+
+### 3.2 Odometrie (Zustandsschätzung v1)
+
+- Eingabe: Encoder-Ticks (A-only) + Sollrichtung (Heuristik)
+- Ausgabe: `/odom_raw` als `Pose2D` (x, y, theta)
+
+### 3.3 Sicherheitsfunktion (Failsafe)
+
+- Regel: Bleiben gültige Steuer-Updates aus, werden Motoren nach `FAILSAFE_TIMEOUT_MS` abgeschaltet (PWM = 0).
+- Ziel: Verhindern von „blindem Weiterfahren“ bei Kommunikationsverlust.
+
+---
+
+## 4. Echtzeit- und Ausführungsarchitektur
+
+### 4.1 Task-Trennung (Dual-Core)
+
+Das System trennt **zeitkritische Regel-/Safety-Funktionen** von **Kommunikation**.
+
+**Core 0 – Control Task (Hard/firm real-time)**
+
+- Takt: `LOOP_RATE_HZ = 100` (deterministisch via `vTaskDelayUntil`)
+- Verantwortlich für:
+  - Encoder-Auswertung (ISR-getrieben)
+  - Odometrie-Integration
+  - Stellgrößenberechnung (Feedforward; PID aktuell deaktiviert)
+  - Failsafe-Überwachung
+
+**Core 1 – Communication (micro-ROS)**
+
+- Verantwortlich für:
+  - micro-ROS Executor Spin
+  - Publish `/odom_raw` (Soll: `ODOM_PUBLISH_HZ = 20`)
+  - Publish `/esp32/heartbeat` (~1 Hz)
+  - Transport/Serialisierung
+
+### 4.2 Datenkonsistenz
+
+- Shared-State zwischen Tasks in einem gemeinsamen Datenobjekt.
+- Zugriff wird synchronisiert (Mutex/Semaphore), um Race Conditions zu vermeiden.
+
+---
+
+## 5. ROS-2 Schnittstelle (System-API)
+
+### 5.1 Topics (externe Schnittstellen)
+
+| Topic | Typ | Richtung | Ziel | Anmerkung |
+|------|-----|----------|------|-----------|
+| `/cmd_vel` | `geometry_msgs/Twist` | Sub | Fahrbefehl | nutzt `linear.x`, `angular.z` |
+| `/odom_raw` | `geometry_msgs/Pose2D` | Pub | Odom v1 | Basis für spätere Bridge zu `/odom` |
+| `/esp32/heartbeat` | `std_msgs/Int32` | Pub | Status | Lebenszeichen |
+| `/esp32/led_cmd` | `std_msgs/Bool` | Sub | IO | LED/MOSFET |
+
+### 5.2 Semantik (vereinbartes Verhalten)
+
+- `/cmd_vel.linear.x` in \(\mathrm{m/s}\), `/cmd_vel.angular.z` in \(\mathrm{rad/s}\)
+- `/odom_raw` liefert Pose im lokalen Odometrie-Frame (noch ohne TF)
+
+---
+
+## 6. Konfiguration (relevante Systemparameter)
+
+### 6.1 Zeit- und Safety-Parameter
+
+| Parameter | Wert | Bedeutung |
+|----------|------|-----------|
+| `LOOP_RATE_HZ` | 100 | Control-Zyklus |
+| `ODOM_PUBLISH_HZ` | 20 | Odom-Publish (Sollwert) |
+| `FAILSAFE_TIMEOUT_MS` | 2000 | Timeout bis Motorstopp |
+
+### 6.2 Motor/Mechanik
+
+| Parameter | Wert | Bedeutung |
+|----------|------|-----------|
+| `MOTOR_PWM_FREQ` | 20000 | PWM-Frequenz |
+| `MOTOR_PWM_BITS` | 8 | Auflösung 0–255 |
 | `PWM_DEADZONE` | 35 | Mindest-PWM |
-| `WHEEL_DIAMETER` | 0.065 m | Raddurchmesser |
-| `WHEEL_BASE` | 0.178 m | Spurbreite |
+| `WHEEL_DIAMETER` | 0.065 m | Geometrie |
+| `WHEEL_BASE` | 0.178 m | Geometrie |
 
-### 4.2 PWM-Kanäle (getauscht für korrekte Richtung)
+### 6.3 Control-Mode
 
-```cpp
-#define PWM_CH_LEFT_A  1  // war 0
-#define PWM_CH_LEFT_B  0  // war 1
-#define PWM_CH_RIGHT_A 3  // war 2
-#define PWM_CH_RIGHT_B 2  // war 3
-```
-
-### 4.3 Regelung
-
-| Parameter | Wert | Beschreibung |
-|-----------|------|--------------|
-| `PID_KP` | 0.0 | Deaktiviert |
-| `PID_KI` | 0.0 | Deaktiviert |
-| `PID_KD` | 0.0 | Deaktiviert |
-| `feedforward_gain` | 2.0 | Direkte Ansteuerung |
-
-### 4.4 Hardware Abstraction (HAL)
-
-| Pin | Funktion | Modus | Hardware |
-|-----|----------|-------|----------|
-| D0 | Motor Left A | PWM → CH 1 | Cytron MDD3A |
-| D1 | Motor Left B | PWM → CH 0 | Cytron MDD3A |
-| D2 | Motor Right A | PWM → CH 3 | Cytron MDD3A |
-| D3 | Motor Right B | PWM → CH 2 | Cytron MDD3A |
-| D6 | Encoder Left | ISR (Rising) | JGA25-370 |
-| D7 | Encoder Right | ISR (Rising) | JGA25-370 |
-| D10 | LED/MOSFET | Digital Out | IRLZ24N |
-| D4, D5 | I2C | Wire | *Reserviert (MPU6050)* |
-| D8, D9 | Servo | PWM | *Reserviert (Kamera)* |
+- Feedforward aktiv (`feedforward_gain = 2.0`)
+- PID deaktiviert (`PID_KP = PID_KI = PID_KD = 0.0`)
 
 ---
 
-## 5. Inbetriebnahme
+## 7. Hardware-Schnittstellen (I/O)
 
-### 5.1 Nach Pi Reboot
+### 7.1 Motor- und Encoder-I/O
 
-```bash
-cd ~/amr-platform/docker
-docker compose up -d
-sleep 5
-docker compose logs microros_agent --tail 5
-```
+| Signal | Pin | Modus | Zielhardware |
+|--------|-----|------|-------------|
+| Motor L A/B | D0/D1 | PWM | MDD3A |
+| Motor R A/B | D2/D3 | PWM | MDD3A |
+| Encoder L A | D6 | IRQ | JGA25-370 |
+| Encoder R A | D7 | IRQ | JGA25-370 |
+| LED/MOSFET | D10 | GPIO | IRLZ24N |
 
-**Erwartung:** `running... | fd: 3`
+### 7.2 Reservierte Schnittstellen
 
-### 5.2 Nach ESP32 Reboot
-
-```bash
-cd ~/amr-platform/docker
-docker compose restart microros_agent
-sleep 5
-docker compose logs microros_agent --tail 5
-```
-
-### 5.3 Verifikation
-
-**Schritt 1: Topics prüfen**
-
-```bash
-docker compose exec amr_dev bash
-source /opt/ros/humble/setup.bash
-ros2 topic list
-```
-
-**Erwartung:**
-
-```
-/cmd_vel
-/esp32/heartbeat
-/esp32/led_cmd
-/odom_raw
-/parameter_events
-/rosout
-```
-
-**Schritt 2: Heartbeat prüfen**
-
-```bash
-ros2 topic echo /esp32/heartbeat
-```
-
-**Erwartung:** Counter incrementiert ~1×/s
-
-**Schritt 3: Odometrie prüfen**
-
-```bash
-ros2 topic echo /odom_raw --once
-```
-
-**Schritt 4: Motor-Test (⚠️ Räder aufbocken!)**
-
-```bash
-ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \
-  "{linear: {x: 0.15}, angular: {z: 0.0}}" -r 10
-```
+- I²C (D4/D5) für IMU (zukünftig)
+- Servo PWM (D8/D9) (zukünftig)
 
 ---
 
-## 6. Testergebnisse (2025-12-20)
+## 8. Verifikation (Systemnachweis auf Verhaltensebene)
 
-| Test | Befehl | Ergebnis | Status |
-|------|--------|----------|--------|
-| Agent-Verbindung | – | `fd: 3` stabil | ✅ |
-| Heartbeat | `ros2 topic echo /esp32/heartbeat` | ~1 Hz | ✅ |
-| Vorwärts | `linear.x: 0.15` | Räder drehen vorwärts | ✅ |
-| Rückwärts | `linear.x: -0.15` | Räder drehen rückwärts | ✅ |
-| Drehen links | `angular.z: 0.5` | Roboter dreht links | ✅ |
-| Drehen rechts | `angular.z: -0.5` | Roboter dreht rechts | ✅ |
-| Failsafe | Ctrl+C, 2s warten | Motoren stoppen | ✅ |
-| Odom | `ros2 topic echo /odom_raw` | x, y, theta plausibel | ✅ |
+> Ziel: Nachweise beschreiben **was** geprüft wurde und **welches Ergebnis** erwartet wird.
+> (Build/Flash-Anleitungen gehören in Entwicklerdoku/Runbook.)
 
----
-
-## 7. Known Issues & Lösungen
-
-| Symptom | Ursache | Lösung |
-|---------|---------|--------|
-| **Roboter "ruckelt"** | Failsafe greift ein | `FAILSAFE_TIMEOUT_MS` erhöhen (aktuell 2000ms) |
-| **Keine Odom-Daten** | QoS Mismatch | Best Effort QoS nutzen |
-| **Motor reagiert nicht** | Feedforward zu niedrig | `feedforward_gain` erhöhen |
-| **PID eskaliert** | Encoder-Polarität invertiert | PID deaktivieren (Kp=0) |
-| **Räder drehen falsch** | PWM-Kanäle | A↔B tauschen in config.h |
-| **Topics fehlen** | Agent nicht verbunden | `docker compose restart microros_agent` |
+| Prüffall | Erwartetes Systemverhalten |
+|---------|-----------------------------|
+| Agent-Verbindung | Verbindung stabil; Reconnect nach Reset reproduzierbar |
+| Heartbeat | Zähler steigt ~1×/s |
+| Motion vor/zurück/drehen | Motoren folgen Vorzeichen von `linear.x` / `angular.z` |
+| Failsafe | Nach Ausbleiben von Kommandos: Motoren stop nach ~`FAILSAFE_TIMEOUT_MS` |
+| Odometrie plausibel | `x` steigt bei Vorwärtsfahrt; `theta` ändert bei Rotation |
 
 ---
 
-## 8. Bekannte Einschränkungen
+## 9. Einschränkungen (bekannte Systemgrenzen)
 
-1. **Open-Loop-Steuerung:** PID deaktiviert, keine Geschwindigkeitsregelung
-2. **Encoder A-only:** Richtung wird aus Soll-Geschwindigkeit abgeleitet
-3. **Odom-Rate:** Effektiv ~3-6 Hz durch Serial-Transport
-
----
-
-## 9. Projektstruktur
-
-```
-amr-platform/
-├── firmware/                 # ◄── v3.2.0 (Dual-Core)
-│   ├── src/main.cpp          # FreeRTOS + micro-ROS + Feedforward
-│   ├── include/config.h      # PWM-Kanäle getauscht
-│   └── platformio.ini
-├── docker/
-│   └── docker-compose.yml    # amr_agent + amr_dev
-├── ros2_ws/
-│   └── src/
-└── docs/
-    ├── 01-microros-esp32s3.md
-    ├── phase1-befehle.md
-    ├── todo-liste.md
-    └── systemdokumentation.md
-```
+1. **Open-Loop Control:** keine geschlossene Geschwindigkeitsregelung (PID deaktiviert)
+2. **Encoder A-only:** Richtungsinformation wird aus Sollwert abgeleitet
+3. **Odom-Rate effektiv geringer:** durch Serial-Transport typisch < Sollwert
+4. **Kein TF/URDF in dieser Version:** Integration folgt in Phase 4
 
 ---
 
-## 10. Changelog
+## 10. Änderungsverlauf (System-Release-Notizen)
 
-### v3.2.0 (20.12.2025) – Phase 1 Abschluss
+### v3.2.0 (2025-12-20)
 
-- **Motor-Richtung:** PWM-Kanäle getauscht (A↔B)
-- **Steuerung:** Feedforward (Gain=2.0) statt PID
-- **PID:** Deaktiviert (Kp=Ki=Kd=0) wegen Encoder-Polarität
-- **Failsafe:** Timeout auf 2000ms erhöht
-- **Tests:** Alle Richtungen validiert
-
-### v3.1.0 (20.12.2025)
-
-- **Baudrate:** 921600 (war 115200)
-- **PID:** Aktiviert (Kp=1.0)
-- **Problem:** PID-Eskalation durch Encoder-Polarität
-
-### v3.0.0 (14.12.2025) – Major Release
-
-- **Architektur:** Wechsel auf Dual-Core (App/Pro CPU Trennung)
-- **RTOS:** Einführung von FreeRTOS Tasks und Mutex-Synchronisation
-- **Daten:** Optimierung auf `Pose2D` (Bandbreitenersparnis ~60%)
-- **Hardware:** Vollständige Initialisierung aller Pins
-
-### v2.2.2 (13.12.2025) – Legacy
-
-- Single-Loop Architektur
-- 3 separate Float-Topics (veraltet)
+- Motor-Richtung durch PWM-Kanaltausch korrigiert
+- Feedforward als stabiler Control-Mode, PID deaktiviert
+- Failsafe Timeout auf \(2000\,\mathrm{ms}\) gesetzt
+- Funktionsnachweise (Motion, Heartbeat, Odom-Plausibilität, Failsafe) erbracht
 
 ---
 
-## 11. Nächste Schritte
+## 11. Ausblick / Systemintegration (nächste Systemschicht)
 
-| Phase | Beschreibung | Status |
-|-------|--------------|--------|
-| Phase 1 | micro-ROS ESP32-S3 | ✅ Abgeschlossen |
-| Phase 2 | Docker-Infrastruktur | ✅ Vorhanden |
-| Phase 3 | RPLidar A1 Integration | 🔜 Bereit |
-| Phase 4 | EKF Sensor Fusion | ⏳ |
-| Phase 5 | SLAM (slam_toolbox) | ⏳ |
-| Phase 6 | Nav2 Autonome Navigation | ⏳ |
+- **Phase 4:** URDF + TF (REP-105) + Odom-Bridge (`Pose2D` → `nav_msgs/Odometry`) + optional EKF
+- Ziel: Kompatibilität für SLAM/Nav2 über standardisierte Frames und `/odom`

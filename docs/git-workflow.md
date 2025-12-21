@@ -8,11 +8,11 @@
 ## 1. Übersicht
 
 ```
-┌─────────────────┐         ┌─────────────────┐         ┌─────────────────┐
-│      Mac        │         │     GitHub      │         │   Raspberry Pi  │
-│   (Entwicklung) │ ──push──▶│  amr-platform   │◀──pull──│   (Runtime)     │
+┌─────────────────┐          ┌─────────────────┐         ┌─────────────────┐
+│      Mac        │          │     GitHub      │         │   Raspberry Pi  │
+│   (Entwicklung) │ ──push──▶│  amr-platform   │──pull──▶│   (Runtime)     │
 │                 │◀──pull── │ unger-robotics  │         │                 │
-└─────────────────┘         └─────────────────┘         └─────────────────┘
+└─────────────────┘          └─────────────────┘         └─────────────────┘
      │                                                        │
      │ firmware_serial/                                       │ ~/amr-platform/
      │ ros2_ws/src/amr_serial_bridge/                         │ docker/

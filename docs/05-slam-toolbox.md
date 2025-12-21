@@ -1,140 +1,109 @@
 ---
-title: "Phase 5 – SLAM Toolbox: Mapping (/map) + map→odom TF"
+title: "Phase 5 – SLAM Toolbox: Mapping (/map) + TF map→odom"
+type: "phase-doc"
+goal: "Online-Mapping etablieren: SLAM Toolbox erzeugt eine nutzbare Occupancy-Map (/map) und die TF-Kante map→odom, sodass Phase 6 (Nav2) auf einer gespeicherten Karte oder im SLAM-Modus arbeiten kann."
 status: "active"
-updated: "2025-12-19"
+updated: "2025-12-21"
+version: "1.1"
 depends_on:
-  - "Phase 2 (ROS 2 Jazzy via Docker auf Pi 5)"
-  - "Phase 2.5 (URDF + TF Frames)"
-  - "Phase 3 (RPLidar A1 + /scan + RViz2)"
-  - "Phase 4 (robot_localization EKF: /odometry/filtered + odom→base_footprint)"
+  - "Phase 2 (Docker ROS 2 Humble) ✅"
+  - "Phase 3 (RPLidar A1 + /scan) ✅"
+  - "Phase 4 (URDF + TF + /odom) ⬜/planned"
 next:
   - "Phase 6 (Nav2 Navigation auf Map)"
 ---
 
-# Phase 5: SLAM Toolbox (Mapping)
+# Phase 5 – SLAM Toolbox (Mapping)
 
-SLAM Toolbox erzeugt aus **LaserScan** + **Odometrie** eine **Occupancy-Grid-Map** (`/map`) und stellt typischerweise zusätzlich die TF **`map → odom`** bereit. Damit ist es eine gängige SLAM-Option für Nav2.
-(Phase 6 setzt voraus: `/map` + `map→odom` sind verfügbar.)
+## 0) Ziel und Regel der Phasen-Dokumentation
+
+### Ziel
+
+Diese Phasen-Doku ist ein **Phasen-Nachweis**: Sie beschreibt für Phase 5 die **Lieferobjekte** (Map + map→odom), die **prüfbaren Abnahmekriterien (DoD)** und einen **kurzen Verifikationspfad** (Topics/TF/RViz/Map-Save), damit Phase 6 darauf aufsetzen kann.
+
+### Regel (Scope-Grenze)
+
+- Zielbild, DoD, minimaler TF-/Topic-Vertrag, Smoke-Checks, Map-Save, typische Fehlerbilder.
 
 ---
 
-## Zielbild & Definition of Done
+## 1) Zielbild (Soll-Zustand)
 
-### Zielbild
-
-- SLAM Toolbox läuft auf dem Pi 5 (ROS 2 Jazzy in Docker).
-- `/scan` liefert saubere LaserScans (Phase 3).
-- EKF liefert stabiles `/odometry/filtered` und TF `odom → base_footprint` (Phase 4).
-- SLAM Toolbox publiziert:
+- SLAM Toolbox läuft im ROS-Container auf dem Pi 5.
+- Eingänge sind stabil:
+  - `/scan` (LaserScan)
+  - `/odom` (Odometry) **oder** `/odometry/filtered` (falls EKF genutzt wird; ggf. remap)
+  - TF `odom → base_footprint` + statische TFs bis `laser`
+- SLAM Toolbox liefert:
   - `/map` (`nav_msgs/OccupancyGrid`)
-  - TF `map → odom` (für Nav2 / RViz2)
-- Map wird als `.yaml` + `.pgm` gespeichert (via `map_saver_cli`).
+  - TF `map → odom`
+- Die Map kann als `<name>.yaml` + `<name>.pgm` gespeichert werden.
 
-### DoD (prüfbar)
+---
 
-- [ ] `ros2 topic list` enthält `/map` und `/scan`
+## 2) Definition of Done (DoD) – prüfbar
+
+- [ ] `ros2 topic list` enthält `/scan` und `/map`
 - [ ] `ros2 run tf2_ros tf2_echo map odom` liefert fortlaufend gültige Transform
-- [ ] RViz2: `Map` sichtbar, Scan liegt plausibel in der Karte, Roboterpose bewegt sich konsistent
-- [ ] Map-Save erzeugt Dateien: `<name>.yaml` + `<name>.pgm`
+- [ ] RViz2 (Fixed Frame `map`): Map sichtbar, Scan liegt plausibel in der Karte, Pose/Bewegung konsistent
+- [ ] Map-Save erzeugt Dateien: `<name>.yaml` und `<name>.pgm`
 
 ---
 
-## 1) Eingangsgrößen & TF-Kontrakt (muss vorher stimmen)
+## 3) TF-/Topic-Vertrag (muss vorher stimmen)
 
-### 1.1 Topics
+### 3.1 Topics
 
-- Laser: `/scan` (`sensor_msgs/LaserScan`)
-  **frame_id**: `base_laser` (aus Phase 2.5)
-- Odom: empfohlen als **Standard-Odom** nach Phase 4:
-  - `/odometry/filtered` (oder remapped auf `/odom`)
+- `/scan` (`sensor_msgs/LaserScan`)
+- `/odom` (`nav_msgs/Odometry`) **oder** `/odometry/filtered` (remap auf `/odom`, wenn nötig)
 
-### 1.2 TF-Baum (minimal)
+### 3.2 TF (minimal)
 
-- URDF / robot_state_publisher (statisch):
-  `base_footprint → base_link → base_laser`
-- EKF (dynamisch):
-  `odom → base_footprint`
-- SLAM Toolbox (dynamisch):
-  `map → odom`
-
-**Regel:** Genau **eine** Quelle pro TF-Kante (kein Doppel-Publishing von `odom→base_*`).
-
----
-
-## 2) Installation (Jazzy, Docker)
-
-### 2.1 Paket installieren (im ROS-Container)
-
-```bash
-sudo apt update
-sudo apt install -y ros-jazzy-slam-toolbox
+```
+odom → base_footprint → base_link → laser
+map → odom            (von SLAM Toolbox)
 ```
 
-### 2.2 Optional: aus Source bauen (nur wenn nötig)
-
-Wenn du Patches brauchst oder Binary nicht passt: in `ros2_ws/src` clonen und `colcon build`.
-(Erstmal nicht machen, wenn „zukunftssicher + stabil“ dein Primärziel ist.)
+**Regel:** Pro TF-Kante genau **eine** Quelle (kein Doppel-Publishing von `odom → base_*`).
 
 ---
 
-## 3) Start: Online Mapping (async)
+## 4) Artefakte (Repo-Orientierung)
 
-Nav2 empfiehlt/zeigt den Start des **async** Nodes über das Launchfile:
+Empfohlen ab Phase 5:
+
+```
+ros2_ws/src/amr_bringup/
+├─ config/
+│  └─ slam_toolbox_online_async.yaml
+└─ launch/
+└─ slam_toolbox.launch.py
+```
+
+Ziel: Start ist **reproduzierbar** über ein eigenes Bringup-Launchfile.
+
+---
+
+## 5) Start (Online Mapping)
+
+### 5.1 Minimalstart (ohne eigenes Bringup, nur zum ersten Nachweis)
 
 ```bash
 ros2 launch slam_toolbox online_async_launch.py
 ```
 
-### 3.1 Parameter-Strategie (robust & PR-freundlich)
-
-- Lege **deine** Param-Datei ins Repo:
-
-  - `ros2_ws/src/amr_bringup/config/slam_toolbox_online_async.yaml`
-- Starte Launch mit Param-Datei (Pattern, je nach Launchfile/Override-Möglichkeit):
-
-  - entweder per Launch-Arg (wenn vorhanden) oder
-  - über eigenes Bringup-Launch in `amr_bringup` (empfohlen ab jetzt)
-
-**Minimal-Overrides**, die du fast immer brauchst:
+### 5.2 Minimal-Parameter (für späteres Repo-Config)
 
 - `scan_topic: /scan`
 - `map_frame: map`
 - `odom_frame: odom`
-- `base_frame: base_footprint` (oder `base_link`, aber konsistent bleiben)
-
-> Praxis: Starte zunächst mit Standard-Launch, prüfe `ros2 param list`/`ros2 param dump` am Node und ziehe dann eine saubere `amr_bringup`-Launch-Kapsel nach.
+- `base_frame: base_footprint` (oder konsistent `base_link`)
 
 ---
 
-## 4) Bringup-Launch (empfohlen für dein Repo)
+## 6) Smoke-Checks (kurz, zielorientiert)
 
-### 4.1 Struktur
-
-```text
-ros2_ws/src/amr_bringup/
-├─ config/
-│  └─ slam_toolbox_online_async.yaml
-└─ launch/
-   └─ slam_toolbox.launch.py
-```
-
-### 4.2 Start (Beispiel)
-
-```bash
-ros2 launch amr_bringup slam_toolbox.launch.py
-```
-
-Kriterien für ein sauberes Launch:
-
-- Node-Name eindeutig (z. B. `slam_toolbox`)
-- Parameterdatei aus dem Repo geladen
-- Remaps dokumentiert (falls `/odometry/filtered` → `/odom` o.ä.)
-
----
-
-## 5) Smoke-Tests (10–15 Minuten)
-
-### 5.1 SLAM läuft wirklich?
+### 6.1 Topics vorhanden?
 
 ```bash
 ros2 topic list | egrep "/scan|/map|/tf"
@@ -142,7 +111,7 @@ ros2 topic hz /scan
 ros2 topic hz /map
 ```
 
-### 5.2 TF-Kette vollständig?
+### 6.2 TF-Kette vollständig?
 
 ```bash
 ros2 run tf2_ros tf2_echo odom base_footprint
@@ -150,31 +119,18 @@ ros2 run tf2_ros tf2_echo map odom
 ros2 run tf2_ros tf2_echo map base_footprint
 ```
 
-### 5.3 RViz2 Minimal-Check
+### 6.3 RViz2 Minimal-Check
 
 - Fixed Frame: `map`
-- Displays:
+- Displays: **Map** (`/map`), **LaserScan** (`/scan`), **TF**
 
-  - Map (`/map`)
-  - LaserScan (`/scan`)
-  - TF
-
-**Erwartung:** Scan liegt „auf“ der Map, keine „schwimmende“ Laserwolke.
+Erwartung: Scan liegt plausibel auf/gegen die Map, keine „schwimmende“ Wolke.
 
 ---
 
-## 6) Map speichern (für Phase 6 / Nav2)
+## 7) Map speichern (Übergabe an Phase 6)
 
-Nav2 nutzt zum Speichern typischerweise `map_saver_cli`:
-
-```bash
-mkdir -p ~/maps
-ros2 run nav2_map_server map_saver_cli -f ~/maps/amr_map
-```
-
-### Docker-Hinweis (wichtig)
-
-Wenn du im Container speicherst, musst du das Zielverzeichnis als Volume haben, z. B.:
+### 7.1 Speicherziel (Docker-Volume empfohlen)
 
 - Host: `amr-platform/maps/`
 - Container: `/maps`
@@ -186,66 +142,67 @@ volumes:
   - ../maps:/maps:rw
 ```
 
-Dann speichern:
+### 7.2 Save
 
 ```bash
 ros2 run nav2_map_server map_saver_cli -f /maps/amr_map
 ```
 
-Erwartete Dateien:
+**Erwartete Dateien:**
 
 - `/maps/amr_map.yaml`
 - `/maps/amr_map.pgm`
 
 ---
 
-## 7) Typische Fehlerbilder (schnell eingrenzen)
+## 8) Typische Fehlerbilder (schnelle Eingrenzung)
 
-### 7.1 `/map` bleibt leer / keine Updates
+### 8.1 `/map` bleibt leer
 
-- `/scan` kommt nicht oder `scan_topic` falsch
-- TF `odom → base_*` fehlt oder ist instabil
-- `frame_id` im `/scan` passt nicht zum TF-Baum (`base_laser` muss existieren)
+- `/scan` fehlt oder falsches `scan_topic`
+- TF `odom → base_*` fehlt/instabil
+- `frame_id` von `/scan` passt nicht zum TF-Baum
 
 Checks:
 
 ```bash
 ros2 topic echo /scan --once
-ros2 run tf2_ros tf2_echo base_link base_laser
 ros2 run tf2_ros tf2_echo odom base_footprint
+ros2 run tf2_ros tf2_echo base_link laser
 ```
 
-### 7.2 „Map driftet weg“ / „Scan klebt am Roboter“
+### 8.2 Map driftet / Scan „klebt“ am Roboter
 
-- `map→odom` fehlt (SLAM läuft nicht korrekt) oder wird von etwas anderem überschrieben
-- `odom→base_*` wird doppelt gepublisht (Bridge + EKF gleichzeitig)
+- `map → odom` fehlt oder wird überschrieben
+- Doppel-Publishing `odom → base_*`
 
 Check:
 
 ```bash
 ros2 run tf2_tools view_frames
-# und prüfen, wer /tf publisht:
 ros2 topic info /tf
 ```
 
-### 7.3 Mapping wirkt „verzogen“
+### 8.3 Map verzerrt
 
-- Wheel-Odom Skalierung (Ticks/m) noch nicht kalibriert
-- LiDAR-Mount (yaw) im URDF falsch
-- Zu schnelle Bewegung beim Mapping (erst langsam, dann schneller)
-
----
-
-## 8) Übergang zu Phase 6 (Nav2)
-
-Für Nav2 im SLAM-Betrieb gilt:
-
-- SLAM stellt `/map` + `map→odom`.
-- Nav2 wird ohne `map_server`/`amcl` gestartet (weil SLAM die Map liefert).
-- Navigation benötigt weiterhin `/cmd_vel`-Pipeline und stabile Odom (Phase 4).
+- Wheel-Odom Skalierung unkalibriert (Ticks/m)
+- LiDAR-Yaw im URDF falsch
+- Mapping zu schnell (anfangs langsam fahren)
 
 ---
 
-## Changelog
+## 9) Übergabe an Phase 6 (Nav2)
 
-- v1.0 (2025-12-19): Online-Async Mapping mit SLAM Toolbox, Smoke-Tests, Map-Save-Workflow (Docker-Volumes), klare TF-Kontrakte für Phase 6.
+Phase 6 kann beginnen, wenn:
+
+- `/map` + `map → odom` stabil sind **und**
+- Map-Dateien gespeichert wurden **oder** SLAM im Live-Modus als Map-Quelle läuft.
+
+---
+
+## 10) Changelog (phase-relevant)
+
+| Version | Datum      | Änderung                                                                             |
+| ------- | ---------- | ------------------------------------------------------------------------------------ |
+| v1.1    | 2025-12-21 | Abhängigkeiten auf Humble/Phase-4-Definition konsolidiert, Fokus: DoD + Verifikation |
+| v1.0    | 2025-12-19 | Initial: Online-Async Mapping, Smoke-Checks, Map-Save, TF-Vertrag                    |
