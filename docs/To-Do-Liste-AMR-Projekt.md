@@ -96,7 +96,7 @@ map -> odom -> base_footprint -> base_link -> laser
 
 ---
 
-### Phase 7 — Vision/AI (Hailo) + Servo-Pan (optional)
+### Phase 7 — Vision/AI (Hailo) + Servo-Pan
 
 - [ ] Kamera bringup (`/camera/image_raw`, `/camera/camera_info`)
 - [ ] Hailo-Inferenz bringup (`/vision/detections`)

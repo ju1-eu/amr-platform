@@ -1,190 +1,161 @@
 # Phase 4: TF-Baum – Befehlsreferenz
 
-**Status:** In Arbeit  
-**Version:** 2.2
+**Status:** ✅ Abgeschlossen
+**Version:** 2.3
+**Datum:** 2025-12-21
 
 ---
 
-## 1) Dateien kopieren (Mac)
-
-```bash
-cd ~/daten/start/IoT/AMR/amr-platform
-
-# ZIP entpacken (ueberschreibt bestehende Dateien)
-unzip -o phase4-ros2-packages.zip
-
-# Struktur pruefen
-ls -la ros2_ws/src/amr_bridge/
-ls -la ros2_ws/src/amr_description/
-ls -la ros2_ws/src/amr_bringup/
-```
-
-### Struktur nach dem Kopieren
+## 1) Projektstruktur
 
 ```
 ros2_ws/src/
 ├── amr_bridge/
 │   ├── amr_bridge/
 │   │   ├── __init__.py
-│   │   └── odom_converter.py
+│   │   └── odom_converter.py    # QoS: Best Effort
+│   ├── package.xml
 │   ├── resource/
 │   │   └── amr_bridge
-│   ├── package.xml
-│   ├── setup.py
-│   └── setup.cfg
+│   ├── setup.cfg
+│   └── setup.py
 ├── amr_bringup/
+│   ├── CMakeLists.txt
 │   ├── launch/
-│   │   └── amr.launch.py       # NEU: Startet alles
-│   ├── package.xml
-│   └── CMakeLists.txt
+│   │   └── amr.launch.py        # Default: /dev/rplidar
+│   └── package.xml
 ├── amr_description/
-│   ├── urdf/
-│   │   └── amr.urdf
+│   ├── CMakeLists.txt
 │   ├── launch/
 │   │   └── description.launch.py
 │   ├── package.xml
-│   └── CMakeLists.txt
-└── sllidar_ros2/                # bereits vorhanden
+│   └── urdf/
+│       └── amr.urdf
+└── sllidar_ros2/
+
+docker/
+├── Dockerfile                   # ROS auto-source in .bashrc
+├── docker-compose.yml           # /dev:/dev Volume Mount
+└── ros_entrypoint.sh
+
+scripts/
+├── 99-amr-usb.rules             # udev-Regeln
+└── install_udev_rules.sh
 ```
 
 ---
 
-## 2) Git Push (Mac)
+## 2) Einmalige Installation (nur beim ersten Mal)
+
+### 2.1 udev-Regeln installieren (Pi)
 
 ```bash
-cd ~/daten/start/IoT/AMR/amr-platform
-git add .
-git commit -m "Phase 4: TF-Baum (odom_converter, URDF, Launch)"
-git push origin main
+cd ~/amr-platform/scripts
+chmod +x install_udev_rules.sh
+sudo ./install_udev_rules.sh
+
+# USB-Geraete abstecken/anstecken, dann pruefen:
+ls -la /dev/rplidar /dev/esp32
 ```
 
----
-
-## 3) Git Pull & Docker Rebuild (Pi)
+### 2.2 Docker-Image bauen (Pi)
 
 ```bash
-ssh pi@rover
-cd ~/amr-platform
-git pull origin main
-
-# Docker-Image neu bauen (einmalig fuer Phase 4)
 cd ~/amr-platform/docker
-docker compose down
 docker compose build --no-cache
+```
+
+### 2.3 ROS-Packages bauen (einmalig im Container)
+
+```bash
 docker compose up -d
-
-# In Container wechseln
 docker compose exec amr_dev bash
-```
 
-Im Container:
-
-```bash
-source /opt/ros/humble/setup.bash
 cd /root/ros2_ws
-
-# Alle AMR-Packages bauen
 colcon build --packages-select amr_bridge amr_description amr_bringup
-source install/setup.bash
 ```
 
 ---
 
-## 4) Starten
-
-### Option A: Alles mit einem Befehl (empfohlen)
+## 3) Normaler Start (nach Reboot)
 
 ```bash
+cd ~/amr-platform/docker
+docker compose up -d
 docker compose exec amr_dev bash
-source /opt/ros/humble/setup.bash
-source /root/ros2_ws/install/setup.bash
 
-# Startet: RPLidar + robot_state_publisher + odom_converter
+# Starten - kein serial_port mehr noetig!
 ros2 launch amr_bringup amr.launch.py
-
-# Falls anderer USB-Port:
-ros2 launch amr_bringup amr.launch.py serial_port:=/dev/ttyUSB1
-```
-
-### Option B: Einzeln starten (Debugging)
-
-**Terminal 1: RPLidar**
-```bash
-ros2 launch sllidar_ros2 sllidar_a1_launch.py serial_port:=/dev/ttyUSB0
-```
-
-**Terminal 2: TF-Baum**
-```bash
-ros2 launch amr_description description.launch.py
 ```
 
 ---
 
-## 5) Smoke-Tests
+## 4) Smoke-Tests
+
+**Zweites Terminal:**
 
 ```bash
 docker compose exec amr_dev bash
-source /opt/ros/humble/setup.bash
-source /root/ros2_ws/install/setup.bash
 
 # Topics pruefen
-ros2 topic list
-# Erwartung: /odom, /odom_raw, /scan, /tf, /tf_static
-
-# /odom vorhanden?
-ros2 topic echo /odom --once
+ros2 topic list | grep -E "odom|scan|tf"
 
 # TF-Baum pruefen
-ros2 run tf2_ros tf2_echo odom base_footprint
-ros2 run tf2_ros tf2_echo base_link laser
 ros2 run tf2_ros tf2_echo odom laser
 
-# TF-Baum als PDF
+# TF-Graph erzeugen
 ros2 run tf2_tools view_frames
-# Erzeugt: frames_<timestamp>.pdf
 ```
 
 ---
 
-## 6) Erwartete Topics
+## 5) Erwartete Topics
 
 ```
 /cmd_vel           # Teleop-Befehle
 /esp32/heartbeat   # ESP32 Status
-/esp32/led_cmd     # LED-Steuerung
 /odom_raw          # ESP32 (Pose2D)
-/odom              # NEU: odom_converter (Odometry)
+/odom              # odom_converter (Odometry)
 /scan              # RPLidar
-/tf                # NEU: Dynamische TFs
-/tf_static         # NEU: Statische TFs (URDF)
-/robot_description # NEU: URDF
+/tf                # Dynamische TFs
+/tf_static         # Statische TFs (URDF)
+/robot_description # URDF
 ```
 
 ---
 
-## 7) Erwarteter TF-Baum
+## 6) TF-Baum
 
 ```
-odom (dynamisch: odom_converter)
-  │
+odom (dynamisch: odom_converter, ~8 Hz)
   └── base_footprint
-        │
         └── base_link (statisch: URDF)
-              │
               └── laser (statisch: URDF)
 ```
 
 ---
 
-## 8) Troubleshooting
+## 7) Troubleshooting
 
-| Problem | Loesung |
-|---------|---------|
-| "Package not found" | `colcon build` wiederholen, `source install/setup.bash` |
-| TF disconnected | Alle Nodes laufen? `ros2 node list` pruefen |
-| Laser schwebt/falsch | URDF-Masse anpassen (siehe unten) |
-| Kein /odom | odom_converter laeuft nicht, ESP32 sendet nicht |
-| Kein /odom_raw | micro-ROS Agent laeuft nicht |
+| Problem | Ursache | Loesung |
+|---------|---------|---------|
+| `ros2: command not found` | ROS nicht gesourced | Dockerfile neu bauen oder `source /opt/ros/humble/setup.bash` |
+| `/dev/rplidar` fehlt | udev-Regel nicht aktiv | USB abstecken/anstecken oder `sudo udevadm trigger` |
+| RPLidar Timeout | Port belegt oder Kabel | USB neu einstecken, Container neu starten |
+| QoS Warning odom_raw | Alte odom_converter Version | `colcon build --packages-select amr_bridge` |
+| TF odom fehlt | ESP32 sendet nicht | `ros2 topic echo /odom_raw --once` pruefen |
+| Container sieht USB nicht | Falscher Mount | docker-compose.yml: `volumes: - /dev:/dev` |
+
+---
+
+## 8) USB-Geraete
+
+| Geraet | Symlink | Physisch | Verwendung |
+|--------|---------|----------|------------|
+| RPLidar A1 | `/dev/rplidar` | ttyUSB* | LaserScan |
+| ESP32-S3 | `/dev/esp32` | ttyACM0 | micro-ROS |
+
+Die Symlinks bleiben stabil, auch wenn sich ttyUSB0/1/2 aendert.
 
 ---
 
@@ -197,35 +168,34 @@ Falls der Laser in RViz2 falsch positioniert ist:
 nano ros2_ws/src/amr_description/urdf/amr.urdf
 ```
 
-Relevante Zeilen:
-
 ```xml
-<!-- base_link Hoehe ueber Boden (Rad-Radius + halbe Chassis-Hoehe) -->
+<!-- base_link Hoehe ueber Boden -->
 <origin xyz="0 0 0.05" rpy="0 0 0"/>
 
 <!-- Laser Position relativ zu base_link -->
-<!-- x: vor/hinter Mitte, y: links/rechts, z: ueber base_link -->
 <origin xyz="0.08 0 0.08" rpy="0 0 0"/>
 ```
 
-Nach Aenderung: Git push, Pi pull, rebuild.
+Nach Aenderung: Git push, Pi pull, `colcon build`.
 
 ---
 
 ## 10) Definition of Done (DoD)
 
-- [ ] `ros2 topic list` zeigt /odom, /tf, /tf_static
-- [ ] `ros2 run tf2_ros tf2_echo odom laser` liefert kontinuierliche Werte
-- [ ] `ros2 run tf2_tools view_frames` erzeugt zusammenhaengenden Baum
-- [ ] RViz2: RobotModel + LaserScan korrekt relativ zueinander
+- [x] `ros2 topic list` zeigt /odom, /tf, /tf_static, /scan
+- [x] `ros2 run tf2_ros tf2_echo odom laser` liefert kontinuierliche Werte
+- [x] `ros2 run tf2_tools view_frames` erzeugt zusammenhaengenden Baum
+- [x] udev-Regeln fuer stabile USB-Ports
+- [x] QoS Best Effort fuer micro-ROS Kompatibilitaet
 
 ---
 
 ## 11) Naechste Phase
 
-Phase 4 ist abgeschlossen, wenn:
-- /scan im Frame `laser` ankommt
-- `tf2_echo odom laser` stabil ist
-- RViz RobotModel + LaserScan deckungsgleich sind
+**Phase 5: SLAM** - Kartenerstellung mit slam_toolbox
 
-Dann: **Phase 5 (SLAM)** starten.
+Voraussetzungen erfuellt:
+
+- /scan im Frame `laser` ✓
+- TF-Baum `odom -> base_footprint -> base_link -> laser` ✓
+- Odometrie auf /odom ✓

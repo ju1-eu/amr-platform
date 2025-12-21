@@ -3,14 +3,17 @@
   AMR Robot Description
   
   TF-Baum:
-    odom → base_footprint → base_link → laser
+    odom -> base_footprint -> base_link -> laser
   
   Frames:
     - base_footprint: Projektion auf Boden (z=0)
     - base_link: Chassis-Mitte
     - laser: RPLidar A1 Scan-Ursprung
   
-  Maße TODO: Mit echtem Roboter abmessen und anpassen!
+  Gemessene Werte (2025-12-21):
+    - Raddurchmesser: 6,5 cm
+    - Boden bis Lidar-Scan-Ebene: 18 cm
+    - Lidar sitzt mittig ueber der Hinterachse
 -->
 <robot name="amr">
 
@@ -23,7 +26,7 @@
   <link name="base_link">
     <visual>
       <geometry>
-        <box size="0.20 0.18 0.05"/>
+        <box size="0.20 0.18 0.04"/>
       </geometry>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <material name="chassis_blue">
@@ -32,7 +35,7 @@
     </visual>
     <collision>
       <geometry>
-        <box size="0.20 0.18 0.05"/>
+        <box size="0.20 0.18 0.04"/>
       </geometry>
       <origin xyz="0 0 0" rpy="0 0 0"/>
     </collision>
@@ -42,7 +45,7 @@
   <link name="laser">
     <visual>
       <geometry>
-        <cylinder radius="0.035" length="0.025"/>
+        <cylinder radius="0.035" length="0.04"/>
       </geometry>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <material name="lidar_black">
@@ -51,7 +54,7 @@
     </visual>
     <collision>
       <geometry>
-        <cylinder radius="0.035" length="0.025"/>
+        <cylinder radius="0.035" length="0.04"/>
       </geometry>
       <origin xyz="0 0 0" rpy="0 0 0"/>
     </collision>
@@ -60,9 +63,8 @@
   <!-- ==================== JOINTS ==================== -->
 
   <!-- 
-    Joint: base_footprint → base_link
-    z-Offset: Höhe des Chassis über Boden
-    TODO: Messen! (Rad-Radius + Chassis-Dicke/2)
+    Joint: base_footprint -> base_link
+    z = 0.05m (5cm): Rad-Radius (3,25cm) + halbe Chassis-Dicke
   -->
   <joint name="base_footprint_to_base_link" type="fixed">
     <parent link="base_footprint"/>
@@ -71,17 +73,15 @@
   </joint>
 
   <!-- 
-    Joint: base_link → laser
-    x: LiDAR vor/hinter Chassis-Mitte (positiv = vorne)
-    y: LiDAR links/rechts (0 = mittig)
-    z: LiDAR über Chassis-Mitte
-    yaw: Falls LiDAR gedreht montiert (0 oder π)
-    TODO: Messen!
+    Joint: base_link -> laser
+    x = -0.07m (7cm hinten): Lidar ueber Hinterachse
+    y = 0m: Lidar mittig
+    z = 0.13m (13cm): 18cm (Scan-Hoehe) - 5cm (base_link) = 13cm
   -->
   <joint name="base_link_to_laser" type="fixed">
     <parent link="base_link"/>
     <child link="laser"/>
-    <origin xyz="0.08 0 0.08" rpy="0 0 0"/>
+    <origin xyz="-0.07 0 0.13" rpy="0 0 0"/>
   </joint>
 
 </robot>
